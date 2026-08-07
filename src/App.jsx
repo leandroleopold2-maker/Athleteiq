@@ -1357,7 +1357,18 @@ export default function App() {
     const fortalezas = classified.filter(m => m.score >= 70);
     const promedio    = classified.filter(m => m.score >= 50 && m.score < 70);
     const debilidades = classified.filter(m => m.score != null && m.score < 50);
-    const weakCategories = Array.from(new Set(debilidades.map(m => m.category)));
+    // squat/bench-press ya tienen su propio apartado dedicado (FUERZA — VBT/RM) más abajo,
+    // así que se excluyen acá para no repetir el mismo plan dos veces.
+    const weakCategories = Array.from(new Set(debilidades.map(m => m.category))).filter(c => c !== "squat" && c !== "bench");
+
+    // Evaluación dedicada de fuerza (VBT/RM) — Squat y Press plano.
+    const strengthEval = Object.keys(STRENGTH_REFS).map(k => {
+      const rec = bestRM(pid, k);
+      if (!rec) return { key: k, evaluated: false, label: STRENGTH_REFS[k].label };
+      const rs = relStrength(pid, k);
+      const score = rs != null ? bandScore(REFERENCE_BANDS[k], rs) : null;
+      return { key: k, evaluated: true, label: STRENGTH_REFS[k].label, rm: rec.rm, bw: rec.bodyweight, rs, ref: REFERENCE_BANDS[k], score, bankKey: k === "squat" ? "squat" : "bench" };
+    });
 
     return (
       <div className="report-page" style={{ background: F.carbon, maxWidth: 860, margin: "0 auto" }}>
@@ -1407,6 +1418,47 @@ export default function App() {
               Asimetría {asym.test}: <span style={{ color: F.white }}>{asym.asim?.toFixed(1)}%</span> (informativo — sin umbral de referencia cargado)
             </div>
           )}
+        </div>
+
+        <div className="report-panel" style={{ ...panel, borderTop: `2px solid ${F.orange}` }}>
+          <PanelHeader accent={F.orange}>FUERZA — VBT / RM (SQUAT Y PRESS PLANO)</PanelHeader>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {strengthEval.map(s => (
+              <div key={s.key} style={{ background: F.asphalt, borderRadius: 3, padding: "10px 14px", border: `1px solid ${F.ghost}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ fontFamily: F.fontMono, fontSize: 11, color: F.white, letterSpacing: 1 }}>{s.label.toUpperCase()}</span>
+                  {s.evaluated ? <ReportBadge score={s.score} /> : <span style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim }}>NO EVALUADO</span>}
+                </div>
+                {s.evaluated ? (
+                  <>
+                    <div style={{ fontFamily: F.fontMono, fontSize: 11, color: F.silver, marginBottom: 6 }}>
+                      1RM: <span style={{ color: F.white, fontWeight: 700 }}>{s.rm?.toFixed(1)}kg</span> · PC: <span style={{ color: F.white }}>{s.bw?.toFixed(1)}kg</span> · Relativo: <span style={{ color: F.white, fontWeight: 700 }}>{s.rs?.toFixed(2)}x PC</span> · Rango élite: {s.ref.min}–{s.ref.max}x PC
+                    </div>
+                    {s.score != null && s.score < 70 ? (
+                      <>
+                        <div style={{ fontFamily: F.fontF1, fontSize: 12, color: F.orange, marginBottom: 8 }}>
+                          → Necesita mejorar su nivel de fuerza en {s.label.toLowerCase()}. Se recomienda un bloque de trabajo específico:
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {EXERCISE_BANK[s.bankKey].items.map((it, i) => (
+                            <div key={i} style={{ display: "flex", justifyContent: "space-between", background: F.panel, borderRadius: 3, padding: "6px 10px" }}>
+                              <span style={{ fontFamily: F.fontF1, fontSize: 12, color: F.white }}>{it.name}</span>
+                              <span style={{ fontFamily: F.fontMono, fontSize: 11, color: F.teal, whiteSpace: "nowrap", marginLeft: 10 }}>{it.sets}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, marginTop: 6 }}>Fuente: {EXERCISE_BANK[s.bankKey].fuente}</div>
+                      </>
+                    ) : (
+                      <div style={{ fontFamily: F.fontF1, fontSize: 12, color: F.green }}>→ Nivel de fuerza adecuado para este apartado, no requiere plan correctivo prioritario.</div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ fontFamily: F.fontF1, fontSize: 12, color: F.dim }}>Todavía no se cargó un test de VBT/RM para {s.label.toLowerCase()} de este atleta.</div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
         {jevo.length > 0 && (
