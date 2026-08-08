@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import {
   LineChart, Line, BarChart, Bar, RadarChart, Radar, PolarGrid,
   PolarAngleAxis, PolarRadiusAxis, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter, ZAxis,
+  Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter,
 } from "recharts";
 
 // ── F1 Design Tokens ──────────────────────────────────────────────────────────
@@ -28,36 +28,8 @@ const F = {
 
 const TEAM_COLORS = [F.teal, F.red, F.yellow, "#FF8700", "#00D2BE", "#DC143C", "#0600EF", "#006F62", "#B6BABD", "#FFFFFF"];
 
-// ── References ────────────────────────────────────────────────────────────────
-const JUMP_REFS = {
-  cmj:      { excellent:42, good:35, average:28, unit:"cm", label:"CMJ",      lowerIsBetter:false },
-  sj:       { excellent:38, good:31, average:24, unit:"cm", label:"SJ",       lowerIsBetter:false },
-  dj:       { excellent:38, good:30, average:22, unit:"cm", label:"DJ",       lowerIsBetter:false },
-  rsi:      { excellent:2.0,good:1.5,average:1.0,unit:"",  label:"RSI",      lowerIsBetter:false },
-  fuerza:   { excellent:3500,good:2800,average:2200,unit:"N",label:"Fuerza", lowerIsBetter:false },
-  potencia: { excellent:5000,good:3500,average:2500,unit:"W",label:"Potencia",lowerIsBetter:false },
-};
-const VEL_REFS = {
-  "10m":{ excellent:1.65,good:1.75,average:1.85,unit:"s",label:"10m",lowerIsBetter:true },
-  "20m":{ excellent:2.80,good:2.95,average:3.10,unit:"s",label:"20m",lowerIsBetter:true },
-  "30m":{ excellent:3.90,good:4.10,average:4.30,unit:"s",label:"30m",lowerIsBetter:true },
-  "40m":{ excellent:4.90,good:5.15,average:5.40,unit:"s",label:"40m",lowerIsBetter:true },
-  "60m":{ excellent:6.80,good:7.10,average:7.40,unit:"s",label:"60m",lowerIsBetter:true },
-};
-// Asimetría de movilidad: cuanto menor, mejor. No entra al score de rendimiento —
-// es un indicador de riesgo / calidad de movimiento aparte.
-const MOBILITY_REF = { excellent:5, good:10, average:15, unit:"%", label:"Asimetría", lowerIsBetter:true };
-// Fuerza relativa (1RM / peso corporal) para los ejercicios principales.
-const STRENGTH_REFS = {
-  squat:        { excellent:2.0, good:1.6, average:1.2, unit:"x PC", label:"Squat rel.",  lowerIsBetter:false },
-  "bench-press":{ excellent:1.2, good:1.0, average:0.8, unit:"x PC", label:"Bench rel.",   lowerIsBetter:false },
-};
-
-// ── Banco de ejercicios correctivos ──────────────────────────────────────────
-// Curado a partir de los propios programas de Leandro (Fuerza Estructural I-V,
-// Readaptación LCA, planillas Fuerza-Potencia) — no genérico.
-// ── Referencias de campo (fútbol) provistas por Leandro — usadas SOLO en el Informe ──
-// El Dashboard y Comparar siguen siendo percentiles relativos al plantel (sin tocar).
+// ── Referencias de campo (fútbol) — usadas para clasificar en el Informe ──────
+// El Dashboard/Comparar usan percentiles relativos al plantel (más abajo), sin tocar esto.
 const REFERENCE_RANGES = {
   cmj:           { min: 42.0, max: 54.5, unit: "cm",   lowerIsBetter: false, label: "CMJ" },
   dj:            { min: 35.0, max: 45.0, unit: "cm",   lowerIsBetter: false, label: "DJ" },
@@ -70,9 +42,8 @@ const REFERENCE_RANGES = {
   dorsiflexion:  { min: 38,   max: 45,   unit: "°",    lowerIsBetter: false, label: "Dorsiflexión tobillo" },
   hipIR:         { min: 30,   max: 45,   unit: "°",    lowerIsBetter: false, label: "Rotación interna cadera" },
 };
-// El piso/techo ÉLITE de cada rango es tu dato real. BUENO/PROMEDIO se extrapolan
-// proporcionalmente (±12% / ±25%) hasta que me pases esos cortes específicos —
-// ajustables acá mismo si conseguís valores más precisos.
+// El piso/techo ÉLITE de cada rango es el dato real que pasaste. BUENO/PROMEDIO se
+// extrapolan proporcionalmente (±12% / ±25%) — ajustable acá si conseguís cortes más precisos.
 function bandFromRange(range) {
   const { min, max, lowerIsBetter } = range;
   if (lowerIsBetter) {
@@ -96,14 +67,15 @@ function bandScore(ref, value) {
   }
 }
 function bandLevel(score) {
+  if (score == null) return { label: "—", color: F.ghost };
   if (score >= 90) return { label: "ELITE", color: F.yellow };
   if (score >= 70) return { label: "BUENO", color: F.green };
   if (score >= 50) return { label: "PROMEDIO", color: F.teal };
   return { label: "BAJO", color: F.red };
 }
 const ReportBadge = ({ score }) => {
-  if (score == null) return <span style={{ fontFamily: F.fontMono, fontSize: 9, color: F.ghost }}>—</span>;
   const lv = bandLevel(score);
+  if (score == null) return <span style={{ fontFamily: F.fontMono, fontSize: 9, color: F.ghost }}>—</span>;
   return (
     <div style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "2px 8px",
       border: `1px solid ${lv.color}`, borderRadius: 2, background: lv.color + "18" }}>
@@ -113,13 +85,14 @@ const ReportBadge = ({ score }) => {
   );
 };
 
+// ── Banco de ejercicios correctivos (curado de los programas propios de Leandro) ──
 const EXERCISE_BANK = {
   salto: {
     label: "Salto / Potencia reactiva",
     fuente: "Programa de Readaptación LCA · Planillas Fuerza-Potencia",
     items: [
-      { name: "Pogos reactivos", sets: "3×10", note: "Contacto corto con el suelo, tobillo rígido" },
-      { name: "Drop jump progresivo (30-45-60cm)", sets: "3×4", note: "Progresión de fuerza reactiva" },
+      { name: "Pogos reactivos", sets: "3×10" },
+      { name: "Drop jump progresivo (30-45-60cm)", sets: "3×4" },
       { name: "Sentadilla con salto", sets: "3×6-8" },
       { name: "Salto al cajón a 1 pierna", sets: "3×4+4" },
       { name: "Búlgaras con salto (carga progresiva)", sets: "3×4+4" },
@@ -129,10 +102,9 @@ const EXERCISE_BANK = {
     label: "RSI / Ciclo estiramiento-acortamiento",
     fuente: "Índice de Fuerza Reactiva (Comunidad Lift) · Readaptación LCA",
     items: [
-      { name: "Pogos reactivos (tiempo de contacto <200ms)", sets: "3×10" },
+      { name: "Pogos reactivos (contacto <200ms)", sets: "3×10" },
       { name: "Drop jump + salto horizontal", sets: "3×4" },
       { name: "Hurdle hops (vallas bajas)", sets: "3×6" },
-      { name: "Saltos unilaterales alternados", sets: "3×4+4" },
     ],
   },
   velocidad: {
@@ -141,7 +113,6 @@ const EXERCISE_BANK = {
     items: [
       { name: "Aceleraciones 5-10m", sets: "4×4-5" },
       { name: "Técnica de carrera + aceleración", sets: "3×20m" },
-      { name: "Aceleración 10m + freno controlado en 5m", sets: "4×3" },
       { name: "Cambios de dirección 45°-90°", sets: "3-4×3+3" },
     ],
   },
@@ -153,7 +124,6 @@ const EXERCISE_BANK = {
       { name: "Sentadilla búlgara", sets: "3×6+6" },
       { name: "Peso muerto convencional / rumano", sets: "3×6-8" },
       { name: "Hip thrust con barra", sets: "3×8-12" },
-      { name: "Sentadilla copa / Prensa", sets: "3×8" },
     ],
   },
   bench: {
@@ -162,8 +132,7 @@ const EXERCISE_BANK = {
     items: [
       { name: "Press plano con barra", sets: "3×6-8" },
       { name: "Press inclinado con barra", sets: "3×6-8" },
-      { name: "Flexiones de brazos (lastradas si es posible)", sets: "3×8-12" },
-      { name: "Press de hombros con mancuernas", sets: "3×8" },
+      { name: "Flexiones lastradas", sets: "3×8-12" },
     ],
   },
   movilidad: {
@@ -172,16 +141,11 @@ const EXERCISE_BANK = {
     items: [
       { name: "Movilidad de cadera 90-90", sets: "2-3×6-10+6-10" },
       { name: "Movilidad de tobillo", sets: "2-3×6-10+6-10" },
-      { name: "Movilidad de aductores", sets: "2×10" },
-      { name: "Activación de glúteo medio (monster walk / step down)", sets: "3×6-10+6-10" },
-      { name: "Control neuromuscular unilateral (pistol squat asistido)", sets: "3×6+6" },
+      { name: "Activación de glúteo medio (monster walk)", sets: "3×6-10+6-10" },
     ],
   },
 };
 
-// percentileColor: gradiente visual según posición relativa dentro del plantel cargado.
-// No es una clasificación (ELITE/BUENO) — esa vendrá del informe una vez cargadas
-// referencias/investigación reales. Acá solo indica mejor/peor que el resto del grupo.
 function percentileColor(pct) {
   if (pct == null) return F.ghost;
   if (pct >= 75) return F.green;
@@ -190,7 +154,7 @@ function percentileColor(pct) {
   return F.red;
 }
 
-// ── ID generator (string, no floats) ─────────────────────────────────────────
+// ── ID generator ──────────────────────────────────────────────────────────────
 let _seq = 1;
 const uid = () => `id_${Date.now()}_${_seq++}`;
 
@@ -227,8 +191,6 @@ function exerciseKey(name) {
   if (t.includes("bench") || t.includes("banca")) return "bench-press";
   return null;
 }
-// Generic MyJump-family semicolon CSV parser — also used for MyROM and MyLift exports,
-// which share the same delimiter/header structure.
 function parseMyJumpCSV(text) {
   const lines = text.trim().split("\n"); if (lines.length < 2) return [];
   const headers = lines[0].split(";").map(h => h.trim());
@@ -250,6 +212,25 @@ function parsePhotoFinishCSV(text) {
   });
   return rows;
 }
+// Detecta automáticamente el tipo de archivo de texto (CSV/TXT) por su contenido.
+function classifyCSV(text) {
+  const firstLine = (text.split("\n")[0] || "");
+  if (firstLine.includes(";")) {
+    const headers = firstLine.split(";").map(h => h.trim());
+    if (headers.some(h => h.includes("Altura de salto"))) return "jump";
+    if (headers.some(h => h.includes("Ángulo"))) return "rom";
+    if (headers.some(h => h.includes("1-RM") || h.includes("Nombre del ejercicio"))) return "lift";
+    return "generic";
+  }
+  const testRows = parsePhotoFinishCSV(text);
+  const validTimes = testRows.filter(r => parseNum(r.time) != null).length;
+  if (testRows.length > 0 && validTimes >= Math.ceil(testRows.length * 0.5)) return "vel";
+  return "generic";
+}
+const IMG_EXT = ["png", "jpg", "jpeg", "webp", "gif"];
+function readFileAsText(file) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsText(file, "UTF-8"); }); }
+function readFileAsDataURL(file) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); }); }
+function readFileAsArrayBuffer(file) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsArrayBuffer(file); }); }
 
 // ── F1 UI Components ──────────────────────────────────────────────────────────
 const TelemetryBar = () => {
@@ -269,10 +250,10 @@ const TelemetryBar = () => {
 const CustomTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: F.panel, border: `1px solid ${F.red}`, borderRadius: 4, padding: "8px 14px" }}>
-      <div style={{ fontFamily: F.fontMono, fontSize: 10, color: F.red, marginBottom: 4, letterSpacing: 2 }}>{label}</div>
+    <div style={{ background: F.panel, border: `1px solid ${F.red}`, borderRadius: 4, padding: "6px 12px" }}>
+      <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.red, marginBottom: 3, letterSpacing: 2 }}>{label}</div>
       {payload.map((p, i) => (
-        <div key={i} style={{ color: p.color, fontSize: 11, fontFamily: F.fontMono, margin: "1px 0" }}>
+        <div key={i} style={{ color: p.color, fontSize: 10, fontFamily: F.fontMono, margin: "1px 0" }}>
           {p.name}: <span style={{ color: F.white, fontWeight: 700 }}>{typeof p.value === "number" ? p.value.toFixed(2) : p.value}</span>
         </div>
       ))}
@@ -280,7 +261,6 @@ const CustomTooltip = ({ active, payload, label }) => {
   );
 };
 
-// Chip de percentil — muestra "P{n}" (posición relativa dentro del plantel), sin etiquetas de calidad.
 const PercentileChip = ({ pct }) => {
   if (pct == null) return <span style={{ fontFamily: F.fontMono, fontSize: 9, color: F.ghost }}>—</span>;
   const col = percentileColor(pct);
@@ -298,7 +278,7 @@ const TimingScore = ({ score, size = 60 }) => {
   const val = score ?? 0;
   const r = size / 2 - 5; const circ = 2 * Math.PI * r; const dash = (val / 100) * circ;
   return (
-    <div style={{ position: "relative", width: size, height: size }}>
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
       <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
         <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={F.ghost} strokeWidth={3} />
         <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={col} strokeWidth={3}
@@ -312,11 +292,27 @@ const TimingScore = ({ score, size = 60 }) => {
   );
 };
 
+// Avatar del deportista — foto si existe, si no iniciales.
+const Avatar = ({ player, size = 40, ring }) => {
+  const initials = (player?.name || "?").split(" ").filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+  const border = ring ? `2px solid ${ring}` : `1px solid ${F.panelBorder}`;
+  if (player?.photo) {
+    return <img src={player.photo} alt={player.name} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover", border, flexShrink: 0 }} />;
+  }
+  return (
+    <div style={{ width: size, height: size, borderRadius: "50%", background: F.ghost, display: "flex",
+      alignItems: "center", justifyContent: "center", fontFamily: F.fontMono, fontWeight: 700,
+      fontSize: size * 0.34, color: F.silver, border, flexShrink: 0 }}>
+      {initials}
+    </div>
+  );
+};
+
 const PanelHeader = ({ children, accent }) => (
-  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14,
-    paddingBottom: 8, borderBottom: `1px solid ${F.panelBorder}` }}>
-    <div style={{ width: 3, height: 14, background: accent || F.red, borderRadius: 1 }} />
-    <div style={{ fontFamily: F.fontMono, fontSize: 10, color: F.silver, letterSpacing: 2, textTransform: "uppercase" }}>{children}</div>
+  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8,
+    paddingBottom: 6, borderBottom: `1px solid ${F.panelBorder}` }}>
+    <div style={{ width: 3, height: 12, background: accent || F.red, borderRadius: 1 }} />
+    <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.silver, letterSpacing: 2, textTransform: "uppercase" }}>{children}</div>
   </div>
 );
 
@@ -324,7 +320,7 @@ const BackBtn = ({ onClick }) => (
   <button onClick={onClick} style={{ display: "inline-flex", alignItems: "center", gap: 6,
     padding: "6px 14px", background: "transparent", border: `1px solid ${F.panelBorder}`,
     borderRadius: 3, color: F.silver, fontFamily: F.fontMono, fontSize: 10, letterSpacing: 2,
-    cursor: "pointer", marginBottom: 16, transition: "border-color .15s" }}
+    cursor: "pointer", transition: "border-color .15s" }}
     onMouseEnter={e => e.currentTarget.style.borderColor = F.red}
     onMouseLeave={e => e.currentTarget.style.borderColor = F.panelBorder}>
     ← VOLVER
@@ -342,45 +338,110 @@ export default function App() {
   const [tab,        setTab]        = useState("import");
   const [prevTab,    setPrevTab]    = useState(null);
 
-  // Use string IDs throughout
-  const [selPlayer, setSelPlayer] = useState(null); // string id
-  const [compareA,  setCompareA]  = useState(null); // string id
-  const [compareB,  setCompareB]  = useState(null); // string id
+  const [selPlayer, setSelPlayer] = useState(null);
+  const [compareA,  setCompareA]  = useState(null);
+  const [compareB,  setCompareB]  = useState(null);
 
   const [filterTeam,  setFilterTeam]  = useState("Todos");
   const [msgs,        setMsgs]        = useState({});
-  const [showDelete,  setShowDelete]  = useState(false);
   const [genericData, setGenericData] = useState(null);
   const [genericCols, setGenericCols] = useState([]);
+  const [genericFileName, setGenericFileName] = useState("");
+  const [genericQueue, setGenericQueue] = useState([]); // archivos pendientes de mapeo manual
   const [colMap,      setColMap]      = useState({});
   const [showMapper,  setShowMapper]  = useState(false);
   const [liftExercise,setLiftExercise]= useState(null);
+  const [importing,   setImporting]   = useState(false);
 
-  const jumpRef    = useRef();
-  const velRef     = useRef();
-  const romRef     = useRef();
-  const liftRef    = useRef();
-  const genericRef = useRef();
+  const unifiedRef = useRef();
 
   function setMsg(key, val) { setMsgs(m => ({ ...m, [key]: val })); }
-
   function goTo(t) { setPrevTab(tab); setTab(t); }
   function goBack() { if (prevTab) { setTab(prevTab); setPrevTab(null); } else setTab("dashboard"); }
 
-  // ── Player merge (string IDs) ─────────────────────────────────────────────
+  // ── Player merge ──────────────────────────────────────────────────────────
   function mergePlayer(name, team, cur) {
     const key = name.toLowerCase().trim();
     const ex = cur.find(p => p.name.toLowerCase().trim() === key);
-    if (ex) return { players: cur, id: ex.id };
-    const np = { id: uid(), name: name.trim(), team: team || "" };
+    if (ex) return { players: team && !ex.team ? cur.map(p => p.id === ex.id ? { ...p, team } : p) : cur, id: ex.id };
+    const np = { id: uid(), name: name.trim(), team: team || "", photo: null };
     return { players: [...cur, np], id: np.id };
+  }
+  function attachPhoto(cur, name, dataUrl) {
+    const { players: up, id: pid } = mergePlayer(name, "", cur);
+    return up.map(p => p.id === pid ? { ...p, photo: dataUrl } : p);
+  }
+
+  // Constructores puros de registros a partir de filas ya parseadas — usados tanto
+  // por el importador unificado como por el mapeo manual.
+  function buildJumpRecords(rows, cur) {
+    const recs = [];
+    rows.forEach(row => {
+      const name = (row["Nombre"] || "").trim(); const team = (row["Equipo"] || "").trim();
+      if (!name) return;
+      const { players: up, id: pid } = mergePlayer(name, team, cur); cur = up;
+      const tipo = (row["Tipo de salto"] || "").trim();
+      const fecha = parseMyJumpDate(row["Fecha"] || "");
+      recs.push({
+        id: uid(), playerId: pid, date: fecha.slice(0, 7), fullDate: fecha,
+        jumpType: jumpTypeKey(tipo), jumpTypeRaw: tipo,
+        altura: parseNum(row["Altura de salto (cm)"]), rsi: parseNum(row["RSI mod (m/s)"]),
+        fuerza: parseNum(row["Fuerza (N)"]), potencia: parseNum(row["Potencia (W)"]),
+        statusColor: row["Color estado de forma"] || "", team,
+      });
+    });
+    return { cur, recs };
+  }
+  function buildVelRecords(rows, cur) {
+    const recs = [];
+    rows.forEach(row => {
+      const name = row.athlete.trim(); if (!name) return;
+      const { players: up, id: pid } = mergePlayer(name, "", cur); cur = up;
+      const fecha = parsePhotoDate(row.date); const dist = detectDistance(row.info);
+      const t = parseNum(row.time); if (!t) return;
+      recs.push({ id: uid(), playerId: pid, date: fecha.slice(0, 7), fullDate: fecha, distance: dist, testName: row.info, time: t });
+    });
+    return { cur, recs };
+  }
+  function buildRomRecords(rows, cur) {
+    const recs = [];
+    rows.forEach(row => {
+      const name = (row["Nombre"] || "").trim(); const team = (row["Equipo"] || "").trim();
+      if (!name) return;
+      const { players: up, id: pid } = mergePlayer(name, team, cur); cur = up;
+      const fecha = parseMyJumpDate(row["Fecha"] || "");
+      recs.push({
+        id: uid(), playerId: pid, date: fecha.slice(0, 7), fullDate: fecha,
+        test: (row["Test"] || "").trim(), angI: parseNum(row["Ángulo izq(º)"]), angD: parseNum(row["Ángulo drch(º)"]),
+        asim: parseNum(row["Asimetría (%)"]), statusColor: row["Color estado de forma"] || "", team,
+      });
+    });
+    return { cur, recs };
+  }
+  function buildLiftRecords(rows, cur) {
+    const recs = [];
+    rows.forEach(row => {
+      const name = (row["Nombre"] || "").trim(); const team = (row["Equipo"] || "").trim();
+      if (!name) return;
+      const { players: up, id: pid } = mergePlayer(name, team, cur); cur = up;
+      const fecha = parseMyJumpDate(row["Fecha"] || "");
+      const exercise = (row["Nombre del ejercicio"] || "").trim();
+      const loads = [1, 2, 3, 4].map(i => parseNum(row[`Carga ${i} (kg)`]));
+      const vels  = [1, 2, 3, 4].map(i => parseNum(row[`Velocidad media ${i} (m/s)`]));
+      const points = loads.map((l, i) => ({ load: l, vel: vels[i] })).filter(x => x.load != null && x.vel != null);
+      recs.push({
+        id: uid(), playerId: pid, date: fecha.slice(0, 7), fullDate: fecha, exercise, exKey: exerciseKey(exercise),
+        bodyweight: parseNum(row["Peso corporal(kg)"]), rm: parseNum(row["1-RM (kg)"]), points, team,
+      });
+    });
+    return { cur, recs };
   }
 
   // ── Delete functions ──────────────────────────────────────────────────────
   function deleteAllData() {
     setPlayers([]); setJumpRecs([]); setVelRecs([]); setRomRecs([]); setLiftRecs([]); setCustomRecs([]);
     setSelPlayer(null); setCompareA(null); setCompareB(null);
-    setMsgs({}); setShowDelete(false); setTab("import");
+    setMsgs({}); setTab("import");
   }
   function deleteJumpRecs()  { setJumpRecs([]);   setMsg("del", "✓ Registros de salto eliminados"); }
   function deleteVelRecs()   { setVelRecs([]);    setMsg("del", "✓ Registros de velocidad eliminados"); }
@@ -399,166 +460,92 @@ export default function App() {
     if (compareB  === pid) setCompareB(null);
   }
 
-  // ── MyJump import ─────────────────────────────────────────────────────────
-  function handleJumpImport(e) {
-    const file = e.target.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const rows = parseMyJumpCSV(ev.target.result);
-      if (!rows.length) { setMsg("jump", "❌ No se pudo leer."); return; }
-      let cur = [...players]; const newRecs = [];
-      rows.forEach(row => {
-        const name = (row["Nombre"] || "").trim(); const team = (row["Equipo"] || "").trim();
-        if (!name) return;
-        const { players: up, id: pid } = mergePlayer(name, team, cur); cur = up;
-        const tipo = (row["Tipo de salto"] || "").trim();
-        const fecha = parseMyJumpDate(row["Fecha"] || "");
-        newRecs.push({
-          id: uid(), playerId: pid, date: fecha.slice(0, 7), fullDate: fecha,
-          jumpType: jumpTypeKey(tipo), jumpTypeRaw: tipo,
-          altura:   parseNum(row["Altura de salto (cm)"]),
-          rsi:      parseNum(row["RSI mod (m/s)"]),
-          fuerza:   parseNum(row["Fuerza (N)"]),
-          potencia: parseNum(row["Potencia (W)"]),
-          statusColor: row["Color estado de forma"] || "", team,
-        });
-      });
-      setPlayers(cur); setJumpRecs(r => [...r, ...newRecs]);
-      if (!selPlayer && cur.length) {
-        setSelPlayer(cur[0].id);
-        setCompareA(cur[0].id);
-        setCompareB(cur[1]?.id || cur[0].id);
-      }
-      setMsg("jump", `✓ ${newRecs.length} registros · ${[...new Set(newRecs.map(r => r.playerId))].length} atletas`);
-      setTab("dashboard");
-    };
-    reader.readAsText(file, "UTF-8");
+  // ── Importador unificado: cualquier mezcla de archivos, todos a la vez ──────
+  async function handleUnifiedImport(e) {
+    const files = Array.from(e.target.files || []);
     e.target.value = "";
-  }
+    if (!files.length) return;
+    setImporting(true);
+    let cur = [...players];
+    let newJump = [], newVel = [], newRom = [], newLift = [];
+    const genericFiles = [];
+    let photosAdded = 0, filesFailed = 0;
 
-  // ── PhotoFinish import ────────────────────────────────────────────────────
-  function handleVelImport(e) {
-    const file = e.target.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const rows = parsePhotoFinishCSV(ev.target.result);
-      if (!rows.length) { setMsg("vel", "❌ No se pudo leer."); return; }
-      let cur = [...players]; const newRecs = [];
-      rows.forEach(row => {
-        const name = row.athlete.trim(); if (!name) return;
-        const { players: up, id: pid } = mergePlayer(name, "", cur); cur = up;
-        const fecha = parsePhotoDate(row.date);
-        const dist = detectDistance(row.info);
-        const t = parseNum(row.time); if (!t) return;
-        newRecs.push({ id: uid(), playerId: pid, date: fecha.slice(0, 7), fullDate: fecha, distance: dist, testName: row.info, time: t });
-      });
-      setPlayers(cur); setVelRecs(r => [...r, ...newRecs]);
-      if (!selPlayer && cur.length) { setSelPlayer(cur[0].id); setCompareA(cur[0].id); setCompareB(cur[1]?.id || cur[0].id); }
-      setMsg("vel", `✓ ${newRecs.length} registros · ${[...new Set(newRecs.map(r => r.playerId))].length} atletas`);
-      setTab("dashboard");
-    };
-    reader.readAsText(file, "UTF-8");
-    e.target.value = "";
-  }
-
-  // ── MyROM (movilidad) import ──────────────────────────────────────────────
-  function handleRomImport(e) {
-    const file = e.target.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const rows = parseMyJumpCSV(ev.target.result);
-      if (!rows.length) { setMsg("rom", "❌ No se pudo leer."); return; }
-      let cur = [...players]; const newRecs = [];
-      rows.forEach(row => {
-        const name = (row["Nombre"] || "").trim(); const team = (row["Equipo"] || "").trim();
-        if (!name) return;
-        const { players: up, id: pid } = mergePlayer(name, team, cur); cur = up;
-        const fecha = parseMyJumpDate(row["Fecha"] || "");
-        newRecs.push({
-          id: uid(), playerId: pid, date: fecha.slice(0, 7), fullDate: fecha,
-          test: (row["Test"] || "").trim(),
-          angI: parseNum(row["Ángulo izq(º)"]),
-          angD: parseNum(row["Ángulo drch(º)"]),
-          asim: parseNum(row["Asimetría (%)"]),
-          statusColor: row["Color estado de forma"] || "", team,
-        });
-      });
-      setPlayers(cur); setRomRecs(r => [...r, ...newRecs]);
-      if (!selPlayer && cur.length) { setSelPlayer(cur[0].id); setCompareA(cur[0].id); setCompareB(cur[1]?.id || cur[0].id); }
-      setMsg("rom", `✓ ${newRecs.length} registros · ${[...new Set(newRecs.map(r => r.playerId))].length} atletas`);
-      setTab("dashboard");
-    };
-    reader.readAsText(file, "UTF-8");
-    e.target.value = "";
-  }
-
-  // ── MyLift (VBT / RM) import ──────────────────────────────────────────────
-  function handleLiftImport(e) {
-    const file = e.target.files[0]; if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const rows = parseMyJumpCSV(ev.target.result);
-      if (!rows.length) { setMsg("lift", "❌ No se pudo leer."); return; }
-      let cur = [...players]; const newRecs = [];
-      rows.forEach(row => {
-        const name = (row["Nombre"] || "").trim(); const team = (row["Equipo"] || "").trim();
-        if (!name) return;
-        const { players: up, id: pid } = mergePlayer(name, team, cur); cur = up;
-        const fecha = parseMyJumpDate(row["Fecha"] || "");
-        const exercise = (row["Nombre del ejercicio"] || "").trim();
-        const loads = [1, 2, 3, 4].map(i => parseNum(row[`Carga ${i} (kg)`]));
-        const vels  = [1, 2, 3, 4].map(i => parseNum(row[`Velocidad media ${i} (m/s)`]));
-        const points = loads.map((l, i) => ({ load: l, vel: vels[i] })).filter(p => p.load != null && p.vel != null);
-        newRecs.push({
-          id: uid(), playerId: pid, date: fecha.slice(0, 7), fullDate: fecha,
-          exercise, exKey: exerciseKey(exercise),
-          bodyweight: parseNum(row["Peso corporal(kg)"]),
-          rm: parseNum(row["1-RM (kg)"]),
-          points, team,
-        });
-      });
-      setPlayers(cur); setLiftRecs(r => [...r, ...newRecs]);
-      if (!selPlayer && cur.length) { setSelPlayer(cur[0].id); setCompareA(cur[0].id); setCompareB(cur[1]?.id || cur[0].id); }
-      setMsg("lift", `✓ ${newRecs.length} registros · ${[...new Set(newRecs.map(r => r.playerId))].length} atletas`);
-      setTab("dashboard");
-    };
-    reader.readAsText(file, "UTF-8");
-    e.target.value = "";
-  }
-
-  // ── Generic import ────────────────────────────────────────────────────────
-  function handleGenericImport(e) {
-    const file = e.target.files[0]; if (!file) return;
-    const ext = file.name.split(".").pop().toLowerCase();
-    const reader = new FileReader();
-    reader.onload = (ev) => {
+    for (const file of files) {
+      const ext = file.name.split(".").pop().toLowerCase();
       try {
-        let rows = [];
+        if (IMG_EXT.includes(ext)) {
+          const dataUrl = await readFileAsDataURL(file);
+          const rawName = file.name.replace(/\.[^.]+$/, "").replace(/[_\-]+/g, " ").trim();
+          cur = attachPhoto(cur, rawName, dataUrl);
+          photosAdded++;
+          continue;
+        }
         if (ext === "xlsx" || ext === "xls") {
-          const wb = XLSX.read(ev.target.result, { type: "array" });
+          const buf = await readFileAsArrayBuffer(file);
+          const wb = XLSX.read(buf, { type: "array" });
           const ws = wb.Sheets[wb.SheetNames[0]];
-          rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+          const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
+          if (!rows.length) { filesFailed++; continue; }
+          genericFiles.push({ rows, cols: Object.keys(rows[0]), fileName: file.name });
+          continue;
+        }
+        const text = await readFileAsText(file);
+        const type = classifyCSV(text);
+        if (type === "jump") {
+          const { cur: c2, recs } = buildJumpRecords(parseMyJumpCSV(text), cur); cur = c2; newJump = newJump.concat(recs);
+        } else if (type === "rom") {
+          const { cur: c2, recs } = buildRomRecords(parseMyJumpCSV(text), cur); cur = c2; newRom = newRom.concat(recs);
+        } else if (type === "lift") {
+          const { cur: c2, recs } = buildLiftRecords(parseMyJumpCSV(text), cur); cur = c2; newLift = newLift.concat(recs);
+        } else if (type === "vel") {
+          const { cur: c2, recs } = buildVelRecords(parsePhotoFinishCSV(text), cur); cur = c2; newVel = newVel.concat(recs);
         } else {
-          const text = new TextDecoder().decode(ev.target.result);
-          const lines = text.trim().split("\n"); if (lines.length < 2) return;
+          const lines = text.trim().split("\n");
+          if (lines.length < 2) { filesFailed++; continue; }
           const sep = lines[0].includes(";") ? ";" : ",";
           const headers = lines[0].split(sep).map(h => h.trim());
-          rows = lines.slice(1).map(line => {
+          const rows = lines.slice(1).map(line => {
             const vals = line.split(sep); const obj = {};
             headers.forEach((h, i) => { obj[h] = (vals[i] || "").trim(); });
             return obj;
           });
+          genericFiles.push({ rows, cols: headers, fileName: file.name });
         }
-        if (!rows.length) { setMsg("gen", "❌ Archivo vacío."); return; }
-        const cols = Object.keys(rows[0]);
-        setGenericData(rows); setGenericCols(cols);
-        setColMap({ name: "", date: "", metric1: "", metric1label: "", metric2: "", metric2label: "", metric3: "", metric3label: "", team: "" });
-        setShowMapper(true);
-        setMsg("gen", `✓ ${rows.length} filas · ${cols.length} columnas. Mapeá las columnas abajo.`);
-      } catch { setMsg("gen", "❌ Error al leer el archivo."); }
-    };
-    reader.readAsArrayBuffer(file);
-    e.target.value = "";
+      } catch { filesFailed++; }
+    }
+
+    setPlayers(cur);
+    if (newJump.length) setJumpRecs(r => [...r, ...newJump]);
+    if (newVel.length) setVelRecs(r => [...r, ...newVel]);
+    if (newRom.length) setRomRecs(r => [...r, ...newRom]);
+    if (newLift.length) setLiftRecs(r => [...r, ...newLift]);
+    if (!selPlayer && cur.length) { setSelPlayer(cur[0].id); setCompareA(cur[0].id); setCompareB(cur[1]?.id || cur[0].id); }
+
+    const parts = [];
+    if (newJump.length) parts.push(`${newJump.length} saltos`);
+    if (newVel.length) parts.push(`${newVel.length} vel.`);
+    if (newRom.length) parts.push(`${newRom.length} movil.`);
+    if (newLift.length) parts.push(`${newLift.length} vbt/rm`);
+    if (photosAdded) parts.push(`${photosAdded} fotos`);
+    let m = parts.length ? `✓ ${parts.join(" · ")}` : "";
+    if (genericFiles.length) m += `${m ? " · " : ""}${genericFiles.length} archivo(s) necesitan mapeo manual`;
+    if (filesFailed) m += `${m ? " · " : ""}⚠ ${filesFailed} no se pudieron leer`;
+    setMsg("unified", m || "❌ No se pudo leer ningún archivo.");
+    setImporting(false);
+
+    if (genericFiles.length) {
+      setGenericQueue(genericFiles.slice(1));
+      loadMapperFile(genericFiles[0]);
+    } else if (newJump.length || newVel.length || newRom.length || newLift.length) {
+      setTab("dashboard");
+    }
+  }
+
+  function loadMapperFile(gf) {
+    setGenericData(gf.rows); setGenericCols(gf.cols); setGenericFileName(gf.fileName);
+    setColMap({ name: "", date: "", metric1: "", metric1label: "", metric2: "", metric2label: "", metric3: "", metric3label: "", team: "" });
+    setShowMapper(true);
   }
 
   function applyMapping() {
@@ -578,9 +565,25 @@ export default function App() {
     });
     setPlayers(cur); setCustomRecs(r => [...r, ...newRecs]);
     if (!selPlayer && cur.length) { setSelPlayer(cur[0].id); setCompareA(cur[0].id); setCompareB(cur[1]?.id || cur[0].id); }
-    setShowMapper(false);
-    setMsg("gen", `✓ ${newRecs.length} registros importados`);
-    setTab("dashboard");
+    setMsg("gen", `✓ ${newRecs.length} registros importados de ${genericFileName}`);
+
+    if (genericQueue.length) {
+      const next = genericQueue[0];
+      setGenericQueue(q => q.slice(1));
+      loadMapperFile(next);
+    } else {
+      setShowMapper(false);
+      setTab("dashboard");
+    }
+  }
+  function skipMapperFile() {
+    if (genericQueue.length) {
+      const next = genericQueue[0];
+      setGenericQueue(q => q.slice(1));
+      loadMapperFile(next);
+    } else {
+      setShowMapper(false);
+    }
   }
 
   // ── Derived data ──────────────────────────────────────────────────────────
@@ -596,34 +599,20 @@ export default function App() {
   const bestJump = (pid) => { const rs = pJR(pid).filter(r => r.altura != null); return rs.reduce((b, r) => r.altura > (b?.altura ?? 0) ? r : b, null); };
   const bestJumpByType = (pid, type) => { const rs = pJR(pid).filter(r => r.jumpType === type && r.altura != null); return rs.reduce((b, r) => r.altura > (b?.altura ?? -Infinity) ? r : b, null); };
   const bestRsi = (pid) => { const rs = pJR(pid).filter(r => r.rsi != null); return rs.reduce((b, r) => r.rsi > (b?.rsi ?? -Infinity) ? r : b, null); };
-  // Detecta a qué referencia de movilidad corresponde el nombre del test (Dorsiflexión / Cadera).
+  const bestVel  = (pid, dist) => { const rs = pVR(pid).filter(r => r.distance === dist && r.time != null); return rs.reduce((b, r) => r.time < (b?.time ?? 999) ? r : b, null); };
+  const allDist  = useMemo(() => Array.from(new Set(velRecs.map(r => r.distance).filter(Boolean))).sort(), [velRecs]);
+  const romTests = useMemo(() => Array.from(new Set(romRecs.map(r => r.test).filter(Boolean))).sort(), [romRecs]);
+  const lastAsym = (pid) => { const rs = pRR(pid).filter(r => r.asim != null); return rs[rs.length - 1] || null; };
+  const bestRM = (pid, exKey) => { const rs = pLR(pid).filter(r => r.exKey === exKey && r.rm != null); return rs.reduce((b, r) => r.rm > (b?.rm ?? 0) ? r : b, null); };
+  const relStrength = (pid, exKey) => { const r = bestRM(pid, exKey); if (!r || !r.bodyweight) return null; return r.rm / r.bodyweight; };
   function matchRomRef(testName) {
     if (!testName) return null; const t = testName.toLowerCase();
     if (t.includes("dorsiflex")) return "dorsiflexion";
     if (t.includes("cadera") || t.includes("rotaci")) return "hipIR";
     return null;
   }
-  const bestVel  = (pid, dist) => { const rs = pVR(pid).filter(r => r.distance === dist && r.time != null); return rs.reduce((b, r) => r.time < (b?.time ?? 999) ? r : b, null); };
-  const lastJump = (pid) => { const rs = pJR(pid).sort((a, b) => b.fullDate.localeCompare(a.fullDate)); return rs[0] || null; };
-  const allDist  = useMemo(() => Array.from(new Set(velRecs.map(r => r.distance).filter(Boolean))).sort(), [velRecs]);
-  const romTests = useMemo(() => Array.from(new Set(romRecs.map(r => r.test).filter(Boolean))).sort(), [romRecs]);
-  const liftExercises = useMemo(() => Array.from(new Set(liftRecs.map(r => r.exercise).filter(Boolean))).sort(), [liftRecs]);
 
-  // Most recent mobility record per player (any test) — used as risk indicator.
-  const lastAsym = (pid) => { const rs = pRR(pid).filter(r => r.asim != null); return rs[rs.length - 1] || null; };
-  // Best (max) 1RM for a given exercise-family, with its bodyweight for relative strength.
-  const bestRM = (pid, exKey) => {
-    const rs = pLR(pid).filter(r => r.exKey === exKey && r.rm != null);
-    return rs.reduce((b, r) => r.rm > (b?.rm ?? 0) ? r : b, null);
-  };
-  const relStrength = (pid, exKey) => {
-    const r = bestRM(pid, exKey);
-    if (!r || !r.bodyweight) return null;
-    return r.rm / r.bodyweight;
-  };
-
-  // ── Comparación directa dentro del plantel (percentiles, sin referencias fijas) ──
-  // percentileRank: % del grupo al que el atleta supera en esa métrica (100 = mejor del grupo).
+  // ── Percentiles (comparación directa dentro del plantel cargado) ───────────
   function percentileRank(list, targetPid, lowerIsBetter) {
     if (!list || list.length < 2) return null;
     const target = list.find(x => x.pid === targetPid);
@@ -631,30 +620,24 @@ export default function App() {
     const better = list.filter(x => x.pid !== targetPid && (lowerIsBetter ? x.value > target.value : x.value < target.value)).length;
     return Math.round((better / (list.length - 1)) * 100);
   }
-  const jumpGroup = useMemo(() => visible.map(p => ({ pid: p.id, value: bestJump(p.id)?.altura ?? null })).filter(x => x.value != null),
-    [players, jumpRecs, filterTeam]);
-  const rsiGroup = useMemo(() => visible.map(p => ({ pid: p.id, value: bestJump(p.id)?.rsi ?? null })).filter(x => x.value != null),
-    [players, jumpRecs, filterTeam]);
-  const distGroups = useMemo(() => Object.fromEntries(allDist.map(d => [d, visible.map(p => ({ pid: p.id, value: bestVel(p.id, d)?.time ?? null })).filter(x => x.value != null)])),
-    [players, velRecs, filterTeam, allDist]);
-  const strengthGroups = useMemo(() => Object.fromEntries(Object.keys(STRENGTH_REFS).map(k => [k, visible.map(p => ({ pid: p.id, value: relStrength(p.id, k) })).filter(x => x.value != null)])),
-    [players, liftRecs, filterTeam]);
-  const asymGroup = useMemo(() => visible.map(p => ({ pid: p.id, value: lastAsym(p.id)?.asim ?? null })).filter(x => x.value != null),
-    [players, romRecs, filterTeam]);
+  const jumpGroup = useMemo(() => visible.map(p => ({ pid: p.id, value: bestJump(p.id)?.altura ?? null })).filter(x => x.value != null), [players, jumpRecs, filterTeam]);
+  const rsiGroup  = useMemo(() => visible.map(p => ({ pid: p.id, value: bestJump(p.id)?.rsi ?? null })).filter(x => x.value != null), [players, jumpRecs, filterTeam]);
+  const distGroups = useMemo(() => Object.fromEntries(allDist.map(d => [d, visible.map(p => ({ pid: p.id, value: bestVel(p.id, d)?.time ?? null })).filter(x => x.value != null)])), [players, velRecs, filterTeam, allDist]);
+  const strengthGroups = useMemo(() => Object.fromEntries(Object.keys(REFERENCE_RANGES).filter(k => k === "squat" || k === "bench-press").map(k => [k, visible.map(p => ({ pid: p.id, value: relStrength(p.id, k) })).filter(x => x.value != null)])), [players, liftRecs, filterTeam]);
+  const asymGroup = useMemo(() => visible.map(p => ({ pid: p.id, value: lastAsym(p.id)?.asim ?? null })).filter(x => x.value != null), [players, romRecs, filterTeam]);
 
-  // Promedio de percentiles disponibles para un atleta — usado para ordenar el plantel.
   const avgPercentile = (pid) => {
     const pcts = [];
     const jp = percentileRank(jumpGroup, pid, false); if (jp != null) pcts.push(jp);
     const rp = percentileRank(rsiGroup, pid, false); if (rp != null) pcts.push(rp);
     allDist.forEach(d => { const vp = percentileRank(distGroups[d], pid, true); if (vp != null) pcts.push(vp); });
-    Object.keys(STRENGTH_REFS).forEach(k => { const sp = percentileRank(strengthGroups[k], pid, false); if (sp != null) pcts.push(sp); });
+    ["squat", "bench-press"].forEach(k => { const sp = percentileRank(strengthGroups[k], pid, false); if (sp != null) pcts.push(sp); });
     return pcts.length ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : null;
   };
 
   const rankingData = useMemo(() =>
     visible.filter(p => (pJR(p.id).length + pVR(p.id).length + pLR(p.id).length) > 0)
-      .map(p => ({ id: p.id, name: p.name.split(" ")[0], fullName: p.name, pct: avgPercentile(p.id) ?? 0 }))
+      .map(p => ({ id: p.id, name: p.name.split(" ")[0], fullName: p.name, photo: p.photo, pct: avgPercentile(p.id) ?? 0 }))
       .sort((a, b) => b.pct - a.pct),
     [players, jumpRecs, velRecs, liftRecs, filterTeam]);
 
@@ -671,7 +654,6 @@ export default function App() {
       return { fecha: d.fecha, CMJ: cmjs.length ? Math.max(...cmjs.map(r => r.altura)) : null, DJ: djs.length ? Math.max(...djs.map(r => r.altura)) : null, RSI: rsif.length ? Math.max(...rsif.map(r => r.rsi)) : null };
     });
   };
-
   const velEvo = (pid) => {
     const byDate = {};
     pVR(pid).forEach(r => {
@@ -680,8 +662,6 @@ export default function App() {
     });
     return Object.values(byDate);
   };
-
-  // Asimetría (%) por fecha, una serie por tipo de test presente.
   const romEvo = (pid) => {
     const byDate = {};
     pRR(pid).forEach(r => {
@@ -690,8 +670,6 @@ export default function App() {
     });
     return Object.values(byDate);
   };
-
-  // 1RM por fecha para un ejercicio dado (toma el máximo si hay más de un test el mismo día).
   const liftRmEvo = (pid, exercise) => {
     const byDate = {};
     pLR(pid).filter(r => r.exercise === exercise && r.rm != null).forEach(r => {
@@ -700,8 +678,6 @@ export default function App() {
     });
     return Object.values(byDate).sort((a, b) => a.fecha.localeCompare(b.fecha));
   };
-
-  // Perfil carga-velocidad del test más reciente de un ejercicio.
   const latestLiftProfile = (pid, exercise) => {
     const rs = pLR(pid).filter(r => r.exercise === exercise);
     if (!rs.length) return { points: [], date: null };
@@ -709,59 +685,53 @@ export default function App() {
     return { points: latest.points, date: latest.fullDate };
   };
 
+  // Devolución + plan corto para una métrica evaluada (usado en Informe).
+  function feedbackFor(category, score) {
+    const bank = EXERCISE_BANK[category]; if (!bank) return null;
+    if (score == null || score >= 70) return null;
+    return bank;
+  }
+
   // ── Styles ────────────────────────────────────────────────────────────────
-  const panel = { background: F.panel, border: `1px solid ${F.panelBorder}`, borderRadius: 4, padding: 18, marginBottom: 14 };
+  const panel = { background: F.panel, border: `1px solid ${F.panelBorder}`, borderRadius: 4, padding: 12, marginBottom: 10, display: "flex", flexDirection: "column", minHeight: 0 };
   const sel   = { background: F.ghost, border: `1px solid ${F.panelBorder}`, borderRadius: 3, color: F.white, padding: "6px 10px", fontSize: 12, outline: "none", fontFamily: F.fontMono, cursor: "pointer" };
   const lbl   = { fontSize: 9, color: F.dim, letterSpacing: 2, marginBottom: 4, display: "block", textTransform: "uppercase", fontFamily: F.fontMono };
   const inp   = { ...sel, width: "100%", boxSizing: "border-box" };
   const dangerBtn = { padding: "6px 14px", background: "transparent", border: `1px solid ${F.red}`, borderRadius: 3, color: F.red, fontFamily: F.fontMono, fontSize: 10, letterSpacing: 2, cursor: "pointer" };
 
-  // ── Import View ───────────────────────────────────────────────────────────
+  // ── Import View (unificado, multi-archivo, auto-detección) ─────────────────
   const ImportView = () => (
-    <div style={{ maxWidth: 980, margin: "0 auto" }}>
-      <div style={{ marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${F.panelBorder}` }}>
+    <div style={{ maxWidth: 760, margin: "0 auto" }}>
+      <div style={{ marginBottom: 16, paddingBottom: 12, borderBottom: `1px solid ${F.panelBorder}` }}>
         <div style={{ fontFamily: F.fontMono, fontSize: 11, color: F.red, letterSpacing: 3, marginBottom: 6 }}>SISTEMA DE IMPORTACIÓN</div>
-        <div style={{ fontFamily: F.fontMono, fontSize: 13, color: F.silver }}>Subí archivos desde cualquier app de evaluación</div>
+        <div style={{ fontFamily: F.fontMono, fontSize: 13, color: F.silver }}>Subí todos tus archivos juntos — la app detecta solo si es MyJump, PhotoFinish, MyROM, MyLift, Excel o una foto</div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 16 }}>
-        {[
-          { key:"jump", label:"MYJUMP LAB", sub:"CMJ / SJ / DJ / RSI", ref:jumpRef, onChange:handleJumpImport, accent:F.red,    ext:".csv,.txt", details:["CMJ, SJ, DJ","RSI mod","Fuerza / Potencia","Estado de forma"] },
-          { key:"vel",  label:"PHOTOFINISH",sub:"10m / 30m / 60m",      ref:velRef,  onChange:handleVelImport,  accent:F.teal,   ext:".csv,.txt", details:["Tiempos por distancia","Detección automática","Múltiples atletas"] },
-          { key:"rom",  label:"MOVILIDAD",  sub:"MyROM · Asimetrías",   ref:romRef,  onChange:handleRomImport,  accent:F.purple, ext:".csv,.txt", details:["Ángulo izq / drch","Asimetría %","Múltiples tests"] },
-          { key:"lift", label:"VBT / RM",   sub:"MyLift · Carga-velocidad", ref:liftRef, onChange:handleLiftImport, accent:F.orange, ext:".csv,.txt", details:["1-RM estimado","Perfil carga-velocidad","Fuerza relativa"] },
-          { key:"gen",  label:"EXCEL / CSV", sub:"Cualquier planilla",   ref:genericRef,onChange:handleGenericImport,accent:F.yellow,ext:".xlsx,.xls,.csv",details:["Cualquier app","Mapeás columnas vos","Múltiples métricas"] },
-        ].map(({ key, label, sub, ref: fref, onChange, accent, ext, details }) => (
-          <div key={key} style={{ ...panel, cursor: "pointer", borderTop: `2px solid ${accent}` }}
-            onClick={() => fref.current?.click()}>
-            <div style={{ fontFamily: F.fontMono, fontSize: 10, color: accent, letterSpacing: 2, marginBottom: 4 }}>{label}</div>
-            <div style={{ fontFamily: F.fontMono, fontSize: 11, color: F.silver, marginBottom: 12 }}>{sub}</div>
-            <div style={{ border: `1px dashed ${F.ghost}`, borderRadius: 3, padding: "16px 10px", textAlign: "center", marginBottom: 10, background: F.asphalt }}>
-              <div style={{ fontSize: 20, color: accent, marginBottom: 4 }}>↑</div>
-              <div style={{ fontFamily: F.fontMono, fontSize: 10, color: F.dim, letterSpacing: 1 }}>SUBIR ARCHIVO</div>
-              <input ref={fref} type="file" accept={ext} style={{ display: "none" }} onChange={onChange} />
-            </div>
-            {details.map(d => (
-              <div key={d} style={{ fontSize: 10, color: F.dim, fontFamily: F.fontMono, padding: "2px 0", borderBottom: `1px solid ${F.ghost}` }}>
-                <span style={{ color: accent, marginRight: 5 }}>—</span>{d}
-              </div>
-            ))}
-            {msgs[key] && (
-              <div style={{ marginTop: 8, fontSize: 10, color: msgs[key].startsWith("✓") ? F.green : F.red, fontFamily: F.fontMono, padding: "4px 8px", background: msgs[key].startsWith("✓") ? F.green + "14" : F.red + "14", borderRadius: 3 }}>
-                {msgs[key]}
-              </div>
-            )}
+      <div style={{ ...panel, cursor: importing ? "default" : "pointer", borderTop: `2px solid ${F.red}`, alignItems: "center", padding: 30 }}
+        onClick={() => !importing && unifiedRef.current?.click()}>
+        <div style={{ fontSize: 32, color: F.red, marginBottom: 8 }}>{importing ? "⏳" : "↑"}</div>
+        <div style={{ fontFamily: F.fontMono, fontSize: 13, color: F.white, letterSpacing: 2, marginBottom: 4 }}>
+          {importing ? "PROCESANDO..." : "SUBIR TODOS LOS ARCHIVOS"}
+        </div>
+        <div style={{ fontFamily: F.fontMono, fontSize: 10, color: F.dim, textAlign: "center" }}>
+          MyJump Lab (saltos) · MyROM · MyLift · PhotoFinish · Excel/CSV · Fotos de los deportistas — todo junto, sin límite de archivos
+        </div>
+        <input ref={unifiedRef} type="file" multiple accept=".csv,.txt,.xlsx,.xls,.png,.jpg,.jpeg,.webp,.gif" style={{ display: "none" }} onChange={handleUnifiedImport} />
+        {msgs.unified && (
+          <div style={{ marginTop: 14, fontSize: 11, color: msgs.unified.startsWith("✓") || msgs.unified.startsWith("❌") === false ? F.green : F.red, fontFamily: F.fontMono, padding: "6px 12px", background: F.asphalt, borderRadius: 3, textAlign: "center" }}>
+            {msgs.unified}
           </div>
-        ))}
+        )}
       </div>
 
-      {/* Column mapper */}
+      <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, textAlign: "center", marginBottom: 16 }}>
+        Tip: para que la foto se asocie sola, nombrá el archivo igual que el jugador (ej. "Juan Perez.jpg")
+      </div>
+
       {showMapper && genericData && (
         <div style={{ ...panel, borderTop: `2px solid ${F.yellow}` }}>
-          <PanelHeader accent={F.yellow}>MAPEO DE COLUMNAS — {genericData.length} FILAS</PanelHeader>
-          <div style={{ marginBottom: 10, fontFamily: F.fontMono, fontSize: 10, color: F.dim }}>
-            Columnas: {genericCols.join(" · ")}
-          </div>
+          <PanelHeader accent={F.yellow}>MAPEO — {genericFileName} ({genericData.length} filas){genericQueue.length > 0 ? ` · quedan ${genericQueue.length} archivo(s) más` : ""}</PanelHeader>
+          <div style={{ marginBottom: 10, fontFamily: F.fontMono, fontSize: 10, color: F.dim }}>Columnas: {genericCols.join(" · ")}</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 14 }}>
             {[
               { k:"name",        label:"NOMBRE (obligatorio)" },
@@ -786,27 +756,21 @@ export default function App() {
               </div>
             ))}
           </div>
-          <div style={{ marginBottom: 14, overflowX: "auto" }}>
-            <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, letterSpacing: 2, marginBottom: 6 }}>PREVIEW — 3 FILAS</div>
-            <table style={{ borderCollapse: "collapse", fontSize: 10, fontFamily: F.fontMono }}>
-              <thead><tr>{genericCols.map(c => <th key={c} style={{ padding: "4px 10px", color: F.red, borderBottom: `1px solid ${F.panelBorder}`, whiteSpace: "nowrap" }}>{c}</th>)}</tr></thead>
-              <tbody>{genericData.slice(0, 3).map((r, i) => (
-                <tr key={i} style={{ borderBottom: `1px solid ${F.ghost}` }}>
-                  {genericCols.map(c => <td key={c} style={{ padding: "4px 10px", color: F.silver, whiteSpace: "nowrap" }}>{String(r[c]).slice(0, 20)}</td>)}
-                </tr>
-              ))}</tbody>
-            </table>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={applyMapping} style={{ padding: "8px 24px", background: F.yellow, color: F.carbon, border: "none", borderRadius: 3, fontFamily: F.fontMono, fontSize: 11, fontWeight: 700, letterSpacing: 2, cursor: "pointer" }}>
+              IMPORTAR
+            </button>
+            <button onClick={skipMapperFile} style={{ padding: "8px 24px", background: "transparent", border: `1px solid ${F.panelBorder}`, color: F.dim, borderRadius: 3, fontFamily: F.fontMono, fontSize: 11, letterSpacing: 2, cursor: "pointer" }}>
+              OMITIR ESTE ARCHIVO
+            </button>
           </div>
-          <button onClick={applyMapping} style={{ padding: "8px 24px", background: F.yellow, color: F.carbon, border: "none", borderRadius: 3, fontFamily: F.fontMono, fontSize: 11, fontWeight: 700, letterSpacing: 2, cursor: "pointer" }}>
-            IMPORTAR CON ESTE MAPEO
-          </button>
         </div>
       )}
 
       {hasData && (
-        <div style={{ ...panel, borderTop: `2px solid ${F.green}`, display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+        <div style={{ ...panel, borderTop: `2px solid ${F.green}`, flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 20 }}>
           <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.green, letterSpacing: 3 }}>DATOS EN SISTEMA</div>
-          {[{ v: players.length, l: "ATLETAS" }, { v: jumpRecs.length, l: "SALTOS" }, { v: velRecs.length, l: "VEL." }, { v: romRecs.length, l: "MOVIL." }, { v: liftRecs.length, l: "VBT/RM" }, { v: customRecs.length, l: "CUSTOM" }].map(({ v, l }) => (
+          {[{ v: players.length, l: "ATLETAS" }, { v: jumpRecs.length, l: "SALTOS" }, { v: velRecs.length, l: "VEL." }, { v: romRecs.length, l: "MOVIL." }, { v: liftRecs.length, l: "VBT/RM" }, { v: players.filter(p=>p.photo).length, l: "FOTOS" }].map(({ v, l }) => (
             <div key={l} style={{ textAlign: "center" }}>
               <div style={{ fontFamily: F.fontMono, fontSize: 18, color: F.white, fontWeight: 700 }}>{v}</div>
               <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, letterSpacing: 2 }}>{l}</div>
@@ -825,7 +789,6 @@ export default function App() {
     <div style={{ ...panel, borderTop: `2px solid ${F.red}`, maxWidth: 700, margin: "0 auto" }}>
       <PanelHeader accent={F.red}>GESTIÓN DE DATOS</PanelHeader>
       {msgs.del && <div style={{ fontFamily: F.fontMono, fontSize: 11, color: F.green, marginBottom: 14, padding: "6px 10px", background: F.green + "14", borderRadius: 3 }}>{msgs.del}</div>}
-
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, letterSpacing: 2, marginBottom: 10 }}>BORRAR POR TIPO</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -836,12 +799,12 @@ export default function App() {
           <button onClick={deleteCustomRecs} style={dangerBtn}>BORRAR CUSTOM ({customRecs.length})</button>
         </div>
       </div>
-
       <div style={{ marginBottom: 20 }}>
         <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, letterSpacing: 2, marginBottom: 10 }}>BORRAR POR ATLETA</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {players.map(p => (
             <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 10px", background: F.asphalt, borderRadius: 3 }}>
+              <Avatar player={p} size={28} />
               <div style={{ fontFamily: F.fontMono, fontSize: 12, color: F.white, flex: 1 }}>{p.name}</div>
               <div style={{ fontFamily: F.fontMono, fontSize: 10, color: F.dim }}>
                 {pJR(p.id).length} saltos · {pVR(p.id).length} vel. · {pRR(p.id).length} movil. · {pLR(p.id).length} vbt
@@ -851,12 +814,9 @@ export default function App() {
           ))}
         </div>
       </div>
-
       <div style={{ borderTop: `1px solid ${F.panelBorder}`, paddingTop: 16 }}>
         <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, letterSpacing: 2, marginBottom: 10 }}>ZONA DE PELIGRO</div>
-        <button onClick={deleteAllData} style={{ ...dangerBtn, background: F.red + "22", fontWeight: 700 }}>
-          ⚠ BORRAR TODO Y EMPEZAR DE CERO
-        </button>
+        <button onClick={deleteAllData} style={{ ...dangerBtn, background: F.red + "22", fontWeight: 700 }}>⚠ BORRAR TODO Y EMPEZAR DE CERO</button>
       </div>
     </div>
   );
@@ -866,7 +826,7 @@ export default function App() {
     const vis = visible.filter(p => (pJR(p.id).length + pVR(p.id).length + pLR(p.id).length) > 0);
     return (
       <div>
-        <div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 12, marginBottom: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
           <div>
             <label style={lbl}>EQUIPO</label>
             <select style={sel} value={filterTeam} onChange={e => setFilterTeam(e.target.value)}>
@@ -883,28 +843,25 @@ export default function App() {
           </div>
         </div>
 
-        {/* Timing board ranking */}
         <div style={panel}>
-          <PanelHeader>COMPARATIVA DEL PLANTEL <span style={{ color: F.dim, fontSize: 9 }}>(percentil relativo al grupo cargado — salto + velocidad + fuerza relativa)</span></PanelHeader>
+          <PanelHeader>COMPARATIVA DEL PLANTEL <span style={{ color: F.dim, fontSize: 9 }}>(percentil relativo al grupo cargado)</span></PanelHeader>
           {rankingData.map((d, i) => {
-            const col = TEAM_COLORS[i % TEAM_COLORS.length]; const barCol = percentileColor(d.pct);
+            const barCol = percentileColor(d.pct);
             return (
-              <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: `1px solid ${F.ghost}`, cursor: "pointer" }}
+              <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: `1px solid ${F.ghost}`, cursor: "pointer" }}
                 onClick={() => { setSelPlayer(d.id); goTo("evolution"); }}>
-                <div style={{ fontFamily: F.fontMono, fontSize: 11, color: F.dim, width: 24, textAlign: "right" }}>{String(i + 1).padStart(2, "0")}</div>
-                <div style={{ width: 4, height: 32, background: col, borderRadius: 1 }} />
-                <div style={{ fontFamily: F.fontMono, fontSize: 13, color: F.white, flex: 1, letterSpacing: 1 }}>{d.fullName}</div>
+                <div style={{ fontFamily: F.fontMono, fontSize: 11, color: F.dim, width: 20, textAlign: "right" }}>{String(i + 1).padStart(2, "0")}</div>
+                <Avatar player={d} size={30} />
+                <div style={{ fontFamily: F.fontMono, fontSize: 12, color: F.white, flex: 1, letterSpacing: 1 }}>{d.fullName}</div>
                 <PercentileChip pct={d.pct} />
-                <div style={{ width: 120, height: 4, background: F.ghost, borderRadius: 2, overflow: "hidden" }}>
+                <div style={{ width: 100, height: 4, background: F.ghost, borderRadius: 2, overflow: "hidden" }}>
                   <div style={{ width: `${d.pct}%`, height: "100%", background: barCol, borderRadius: 2, boxShadow: `0 0 6px ${barCol}` }} />
                 </div>
-                <div style={{ fontFamily: F.fontMono, fontSize: 14, color: barCol, width: 36, textAlign: "right", fontWeight: 700 }}>{d.pct}</div>
               </div>
             );
           })}
         </div>
 
-        {/* Player cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: 10, marginBottom: 14 }}>
           {vis.map((p, i) => {
             const pct = avgPercentile(p.id); const bj = bestJump(p.id);
@@ -913,28 +870,26 @@ export default function App() {
             const risk = asymPct != null && asymPct < 25;
             return (
               <div key={p.id} style={{ ...panel, marginBottom: 0, cursor: "pointer", borderLeft: `3px solid ${col}` }}
-                onClick={() => { setSelPlayer(p.id); goTo("evolution"); }}
-                onMouseEnter={e => e.currentTarget.style.background = F.ghost}
-                onMouseLeave={e => e.currentTarget.style.background = F.panel}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                  <div>
-                    <div style={{ fontFamily: F.fontMono, fontSize: 13, color: F.white, letterSpacing: 1 }}>{p.name.split(" ")[0].toUpperCase()}</div>
-                    <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, letterSpacing: 1, marginTop: 2 }}>{p.name.split(" ").slice(1).join(" ").toUpperCase()}</div>
-                    <div style={{ fontFamily: F.fontMono, fontSize: 9, color: col, letterSpacing: 1, marginTop: 3 }}>{p.team || "—"}</div>
+                onClick={() => { setSelPlayer(p.id); goTo("evolution"); }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
+                    <Avatar player={p} size={38} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: F.fontMono, fontSize: 12, color: F.white, letterSpacing: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name.split(" ")[0].toUpperCase()}</div>
+                      <div style={{ fontFamily: F.fontMono, fontSize: 9, color: col, letterSpacing: 1 }}>{p.team || "—"}</div>
+                    </div>
                   </div>
-                  <TimingScore score={pct} size={52} />
+                  <TimingScore score={pct} size={44} />
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {bj && <div style={{ background: F.ghost, borderRadius: 2, padding: "3px 7px", fontFamily: F.fontMono, fontSize: 10 }}>
-                    <span style={{ color: F.dim }}>{bj.jumpTypeRaw} </span>
-                    <span style={{ color: F.teal }}>{bj.altura?.toFixed(1)}cm</span>
+                    <span style={{ color: F.dim }}>{bj.jumpTypeRaw} </span><span style={{ color: F.teal }}>{bj.altura?.toFixed(1)}cm</span>
                   </div>}
                   {bv && <div style={{ background: F.ghost, borderRadius: 2, padding: "3px 7px", fontFamily: F.fontMono, fontSize: 10 }}>
-                    <span style={{ color: F.dim }}>{allDist[0]} </span>
-                    <span style={{ color: F.yellow }}>{bv.time?.toFixed(2)}s</span>
+                    <span style={{ color: F.dim }}>{allDist[0]} </span><span style={{ color: F.yellow }}>{bv.time?.toFixed(2)}s</span>
                   </div>}
                   {risk && <div style={{ background: F.red + "18", border: `1px solid ${F.red}`, borderRadius: 2, padding: "3px 7px", fontFamily: F.fontMono, fontSize: 10, color: F.red }}>
-                    ⚠ ASIMETRÍA {asym.asim?.toFixed(1)}% <span style={{ color: F.dim }}>(peor cuarto del plantel)</span>
+                    ⚠ ASIMETRÍA {asym.asim?.toFixed(1)}%
                   </div>}
                 </div>
               </div>
@@ -945,11 +900,11 @@ export default function App() {
         {allDist.length > 0 && (
           <div style={panel}>
             <PanelHeader accent={F.yellow}>MEJORES TIEMPOS</PanelHeader>
-            <ResponsiveContainer width="100%" height={Math.max(140, vis.length * 24)}>
+            <ResponsiveContainer width="100%" height={Math.max(120, vis.length * 22)}>
               <BarChart data={vis.filter(p => pVR(p.id).length > 0).map(p => ({ name: p.name.split(" ")[0], ...Object.fromEntries(allDist.map(d => [d, bestVel(p.id, d)?.time ?? null])) }))} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} horizontal={false} />
                 <XAxis type="number" tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} unit="s" />
-                <YAxis dataKey="name" type="category" tick={{ fill: F.silver, fontSize: 10, fontFamily: F.fontMono }} width={70} />
+                <YAxis dataKey="name" type="category" tick={{ fill: F.silver, fontSize: 10, fontFamily: F.fontMono }} width={65} />
                 <Tooltip content={<CustomTooltip />} />
                 <Legend wrapperStyle={{ fontSize: 10, fontFamily: F.fontMono }} />
                 {allDist.map((d, i) => <Bar key={d} dataKey={d} fill={TEAM_COLORS[i]} radius={[0, 3, 3, 0]} />)}
@@ -961,7 +916,7 @@ export default function App() {
     );
   };
 
-  // ── Evolution ─────────────────────────────────────────────────────────────
+  // ── Evolution (layout condensado en grilla, todo en una pantalla) ──────────
   const Evolution = () => {
     const activePlayers = players.filter(p => (pJR(p.id).length + pVR(p.id).length + pRR(p.id).length + pLR(p.id).length) > 0);
     const pid = selPlayer && activePlayers.find(p => p.id === selPlayer) ? selPlayer : activePlayers[0]?.id;
@@ -973,352 +928,266 @@ export default function App() {
     const curExercise = liftExercise && playerExercises.includes(liftExercise) ? liftExercise : playerExercises[0];
     const rmEvo = curExercise ? liftRmEvo(pid, curExercise) : [];
     const profile = curExercise ? latestLiftProfile(pid, curExercise) : { points: [], date: null };
-    const curRelStrength = curExercise ? relStrength(pid, exerciseKey(curExercise)) : null;
 
+    const cardH = 155;
     return (
-      <div>
-        <BackBtn onClick={goBack} />
-        <div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 110px)" }}>
+        <div style={{ display: "flex", gap: 10, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <Avatar player={p} size={36} />
           <div>
             <label style={lbl}>ATLETA</label>
             <select style={sel} value={pid || ""} onChange={e => setSelPlayer(e.target.value)}>
-              {activePlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {activePlayers.map(pl => <option key={pl.id} value={pl.id}>{pl.name}</option>)}
             </select>
           </div>
           {p && <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, letterSpacing: 2 }}>{p.team || ""}</div>}
-          <button onClick={() => goTo("informe")} style={{ marginLeft: "auto", padding: "8px 16px", background: "transparent", border: `1px solid ${F.yellow}`, borderRadius: 3, color: F.yellow, fontFamily: F.fontMono, fontSize: 10, letterSpacing: 2, cursor: "pointer", fontWeight: 700 }}>
+          <button onClick={() => goTo("informe")} style={{ marginLeft: "auto", padding: "6px 14px", background: "transparent", border: `1px solid ${F.yellow}`, borderRadius: 3, color: F.yellow, fontFamily: F.fontMono, fontSize: 9, letterSpacing: 2, cursor: "pointer", fontWeight: 700 }}>
             📄 DESCARGAR INFORME
           </button>
         </div>
 
-        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
           {[
-            { v: jrecs.length + vrecs.length + rrecs.length + lrecs.length, l: "REGISTROS",    c: F.silver },
-            { v: bj?.altura?.toFixed(1) + "cm" ?? "—",           l: "MEJOR SALTO", c: F.teal },
-            { v: bj?.rsi?.toFixed(2) ?? "—",                     l: "MEJOR RSI",   c: F.yellow },
-            ...allDist.map(d => ({ v: bestVel(pid, d)?.time?.toFixed(2) + "s" ?? "—", l: d, c: F.red })),
+            { v: jrecs.length + vrecs.length + rrecs.length + lrecs.length, l: "REG.", c: F.silver },
+            { v: bj?.altura != null ? bj.altura.toFixed(1) + "cm" : "—", l: "SALTO", c: F.teal },
+            { v: bj?.rsi?.toFixed(2) ?? "—", l: "RSI", c: F.yellow },
+            ...allDist.map(d => ({ v: bestVel(pid, d)?.time != null ? bestVel(pid, d).time.toFixed(2) + "s" : "—", l: d, c: F.red })),
           ].map(({ v, l, c }) => (
-            <div key={l} style={{ ...panel, marginBottom: 0, padding: "8px 14px", flex: 1, minWidth: 80, borderTop: `2px solid ${c}` }}>
-              <div style={{ fontFamily: F.fontMono, fontSize: 16, color: F.white, fontWeight: 700 }}>{v}</div>
-              <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, letterSpacing: 2 }}>{l}</div>
+            <div key={l} style={{ ...panel, marginBottom: 0, padding: "6px 12px", flex: 1, minWidth: 70, borderTop: `2px solid ${c}` }}>
+              <div style={{ fontFamily: F.fontMono, fontSize: 14, color: F.white, fontWeight: 700 }}>{v}</div>
+              <div style={{ fontFamily: F.fontMono, fontSize: 8, color: F.dim, letterSpacing: 1 }}>{l}</div>
             </div>
           ))}
         </div>
 
-        {jevo.length > 0 && (
-          <div style={panel}>
-            <PanelHeader>ALTURA DE SALTO (cm)</PanelHeader>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={jevo}>
-                <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
-                <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} />
-                <YAxis tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} unit="cm" />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 10, fontFamily: F.fontMono }} />
-                <Line dataKey="CMJ" stroke={F.teal} strokeWidth={2} dot={{ r: 4, fill: F.teal }} connectNulls />
-                <Line dataKey="DJ"  stroke={F.red}  strokeWidth={2} dot={{ r: 4, fill: F.red  }} connectNulls />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {vevo.length > 0 && allDist.length > 0 && (
-          <div style={panel}>
-            <PanelHeader accent={F.yellow}>VELOCIDAD (s)</PanelHeader>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={vevo}>
-                <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
-                <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} />
-                <YAxis tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} unit="s" />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 10, fontFamily: F.fontMono }} />
-                {allDist.map((d, i) => <Line key={d} dataKey={d} stroke={TEAM_COLORS[i]} strokeWidth={2} dot={{ r: 4 }} connectNulls />)}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {jevo.some(d => d.RSI) && (
-          <div style={panel}>
-            <PanelHeader accent={F.yellow}>RSI MOD</PanelHeader>
-            <ResponsiveContainer width="100%" height={160}>
-              <LineChart data={jevo}>
-                <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
-                <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} />
-                <YAxis tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} />
-                <Tooltip content={<CustomTooltip />} />
-                <Line dataKey="RSI" stroke={F.yellow} strokeWidth={2} dot={{ r: 4, fill: F.yellow }} connectNulls />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {/* Movilidad */}
-        {revo.length > 0 && (
-          <div style={panel}>
-            <PanelHeader accent={F.purple}>MOVILIDAD — ASIMETRÍA (%)</PanelHeader>
-            <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={revo}>
-                <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
-                <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} />
-                <YAxis tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} unit="%" />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 10, fontFamily: F.fontMono }} />
-                {romTests.map((t, i) => <Line key={t} dataKey={t} stroke={[F.purple, F.orange, F.teal, F.yellow][i % 4]} strokeWidth={2} dot={{ r: 4 }} connectNulls />)}
-              </LineChart>
-            </ResponsiveContainer>
-            <div style={{ marginTop: 10, fontFamily: F.fontMono, fontSize: 9, color: F.dim }}>
-              Sin referencia fija cargada todavía — comparado contra el resto del plantel en la columna PERCENTIL.
-            </div>
-          </div>
-        )}
-        {rrecs.length > 0 && (
-          <div style={panel}>
-            <PanelHeader accent={F.purple}>HISTORIAL MOVILIDAD</PanelHeader>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-                <thead><tr style={{ borderBottom: `1px solid ${F.panelBorder}` }}>
-                  {["FECHA", "TEST", "ÁNG. IZQ", "ÁNG. DRCH", "ASIMETRÍA", "PERCENTIL"].map(h => (
-                    <th key={h} style={{ padding: "5px 10px", color: F.dim, textAlign: "left", fontFamily: F.fontMono, fontSize: 9, letterSpacing: 2 }}>{h}</th>
-                  ))}
-                </tr></thead>
-                <tbody>{rrecs.map((r, i) => {
-                  const isLatest = i === rrecs.length - 1;
-                  const pct = isLatest ? percentileRank(asymGroup, pid, true) : null;
-                  return <tr key={i} style={{ borderBottom: `1px solid ${F.ghost}` }}>
-                    <td style={{ padding: "6px 10px", color: F.teal, fontFamily: F.fontMono, fontSize: 11 }}>{r.fullDate}</td>
-                    <td style={{ padding: "6px 10px", color: F.silver, fontFamily: F.fontMono, fontSize: 11 }}>{r.test}</td>
-                    <td style={{ padding: "6px 10px", color: F.silver, fontFamily: F.fontMono, fontSize: 11 }}>{r.angI?.toFixed(1) ?? "—"}º</td>
-                    <td style={{ padding: "6px 10px", color: F.silver, fontFamily: F.fontMono, fontSize: 11 }}>{r.angD?.toFixed(1) ?? "—"}º</td>
-                    <td style={{ padding: "6px 10px", fontFamily: F.fontMono, fontSize: 13, color: F.white, fontWeight: 700 }}>{r.asim?.toFixed(1)}%</td>
-                    <td style={{ padding: "6px 10px" }}>{isLatest ? <PercentileChip pct={pct} /> : <span style={{ color: F.ghost, fontFamily: F.fontMono, fontSize: 9 }}>—</span>}</td>
-                  </tr>;
-                })}</tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* VBT / RM */}
-        {lrecs.length > 0 && (
-          <div style={panel}>
-            <PanelHeader accent={F.orange}>VBT / RM {playerExercises.length > 1 && (
-              <select style={{ ...sel, marginLeft: 10 }} value={curExercise} onChange={e => setLiftExercise(e.target.value)}>
-                {playerExercises.map(ex => <option key={ex} value={ex}>{ex}</option>)}
-              </select>
-            )}</PanelHeader>
-            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-              <div style={{ ...panel, marginBottom: 0, padding: "8px 14px", borderTop: `2px solid ${F.orange}` }}>
-                <div style={{ fontFamily: F.fontMono, fontSize: 16, color: F.white, fontWeight: 700 }}>{rmEvo[rmEvo.length - 1]?.rm?.toFixed(1) ?? "—"} kg</div>
-                <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, letterSpacing: 2 }}>1RM ACTUAL</div>
-              </div>
-              {curRelStrength != null && (
-                <div style={{ ...panel, marginBottom: 0, padding: "8px 14px", borderTop: `2px solid ${F.orange}` }}>
-                  <div style={{ fontFamily: F.fontMono, fontSize: 16, color: F.white, fontWeight: 700 }}>{curRelStrength.toFixed(2)}x PC</div>
-                  <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, letterSpacing: 2 }}>FUERZA RELATIVA</div>
-                </div>
-              )}
-            </div>
-            {rmEvo.length > 1 && (
-              <ResponsiveContainer width="100%" height={180}>
-                <LineChart data={rmEvo}>
+        <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gridAutoRows: `${cardH}px`, gap: 8, overflowY: "auto" }}>
+          {jevo.length > 0 && (
+            <div style={{ ...panel, marginBottom: 0 }}>
+              <PanelHeader>SALTO (cm)</PanelHeader>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={jevo}>
                   <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
-                  <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} />
-                  <YAxis tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} unit="kg" />
+                  <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} />
+                  <YAxis tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} unit="cm" width={30} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Line dataKey="rm" name="1RM" stroke={F.orange} strokeWidth={2} dot={{ r: 4, fill: F.orange }} connectNulls />
+                  <Legend wrapperStyle={{ fontSize: 9, fontFamily: F.fontMono }} />
+                  <Line dataKey="CMJ" stroke={F.teal} strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                  <Line dataKey="DJ" stroke={F.red} strokeWidth={2} dot={{ r: 3 }} connectNulls />
                 </LineChart>
               </ResponsiveContainer>
-            )}
-            {profile.points.length > 0 && (
-              <div style={{ marginTop: 14 }}>
-                <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, letterSpacing: 2, marginBottom: 8 }}>
-                  PERFIL CARGA-VELOCIDAD · {profile.date}
-                </div>
-                <ResponsiveContainer width="100%" height={200}>
-                  <ScatterChart>
-                    <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
-                    <XAxis dataKey="load" name="Carga" unit="kg" tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} type="number" />
-                    <YAxis dataKey="vel" name="Vel. media" unit="m/s" tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} type="number" />
-                    <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: "3 3" }} />
-                    <Scatter data={profile.points} fill={F.orange} line={{ stroke: F.orange, strokeWidth: 1 }} shape="circle" />
-                  </ScatterChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-          </div>
-        )}
-
-        {vrecs.length > 0 && (
-          <div style={panel}>
-            <PanelHeader accent={F.yellow}>HISTORIAL VELOCIDAD</PanelHeader>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-                <thead><tr style={{ borderBottom: `1px solid ${F.panelBorder}` }}>
-                  {["FECHA", "TEST", "DIST", "TIEMPO", "PERCENTIL"].map(h => (
-                    <th key={h} style={{ padding: "5px 10px", color: F.dim, textAlign: "left", fontFamily: F.fontMono, fontSize: 9, letterSpacing: 2 }}>{h}</th>
-                  ))}
-                </tr></thead>
-                <tbody>{vrecs.map((r, i) => {
-                  const isBest = r.time === bestVel(pid, r.distance)?.time;
-                  const pct = isBest ? percentileRank(distGroups[r.distance], pid, true) : null;
-                  return <tr key={i} style={{ borderBottom: `1px solid ${F.ghost}` }}>
-                    <td style={{ padding: "6px 10px", color: F.teal, fontFamily: F.fontMono, fontSize: 11 }}>{r.fullDate}</td>
-                    <td style={{ padding: "6px 10px", color: F.silver, fontFamily: F.fontMono, fontSize: 11 }}>{r.testName}</td>
-                    <td style={{ padding: "6px 10px", color: F.silver, fontFamily: F.fontMono, fontSize: 11 }}>{r.distance || "—"}</td>
-                    <td style={{ padding: "6px 10px", fontFamily: F.fontMono, fontSize: 13, color: F.white, fontWeight: 700 }}>{r.time?.toFixed(2)}s</td>
-                    <td style={{ padding: "6px 10px" }}>{isBest ? <PercentileChip pct={pct} /> : <span style={{ color: F.ghost, fontFamily: F.fontMono, fontSize: 9 }}>—</span>}</td>
-                  </tr>;
-                })}</tbody>
+            </div>
+          )}
+          {jevo.some(d => d.RSI) && (
+            <div style={{ ...panel, marginBottom: 0 }}>
+              <PanelHeader accent={F.yellow}>RSI MOD</PanelHeader>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={jevo}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
+                  <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} />
+                  <YAxis tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} width={30} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Line dataKey="RSI" stroke={F.yellow} strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          {vevo.length > 0 && allDist.length > 0 && (
+            <div style={{ ...panel, marginBottom: 0 }}>
+              <PanelHeader accent={F.yellow}>VELOCIDAD (s)</PanelHeader>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={vevo}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
+                  <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} />
+                  <YAxis tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} unit="s" width={30} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: 9, fontFamily: F.fontMono }} />
+                  {allDist.map((d, i) => <Line key={d} dataKey={d} stroke={TEAM_COLORS[i]} strokeWidth={2} dot={{ r: 3 }} connectNulls />)}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          {revo.length > 0 && (
+            <div style={{ ...panel, marginBottom: 0 }}>
+              <PanelHeader accent={F.purple}>MOVILIDAD — ASIMETRÍA (%)</PanelHeader>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={revo}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
+                  <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} />
+                  <YAxis tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} unit="%" width={30} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: 9, fontFamily: F.fontMono }} />
+                  {romTests.map((t, i) => <Line key={t} dataKey={t} stroke={[F.purple, F.orange, F.teal, F.yellow][i % 4]} strokeWidth={2} dot={{ r: 3 }} connectNulls />)}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          {lrecs.length > 0 && rmEvo.length > 1 && (
+            <div style={{ ...panel, marginBottom: 0 }}>
+              <PanelHeader accent={F.orange}>1RM {playerExercises.length > 1 && (
+                <select style={{ ...sel, marginLeft: 8, padding: "2px 6px", fontSize: 9 }} value={curExercise} onChange={e => setLiftExercise(e.target.value)}>
+                  {playerExercises.map(ex => <option key={ex} value={ex}>{ex}</option>)}
+                </select>
+              )}</PanelHeader>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={rmEvo}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
+                  <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} />
+                  <YAxis tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} unit="kg" width={30} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Line dataKey="rm" name="1RM" stroke={F.orange} strokeWidth={2} dot={{ r: 3, fill: F.orange }} connectNulls />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          {profile.points.length > 0 && (
+            <div style={{ ...panel, marginBottom: 0 }}>
+              <PanelHeader accent={F.orange}>PERFIL CARGA-VEL. · {profile.date}</PanelHeader>
+              <ResponsiveContainer width="100%" height="100%">
+                <ScatterChart>
+                  <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
+                  <XAxis dataKey="load" name="Carga" unit="kg" tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} type="number" />
+                  <YAxis dataKey="vel" name="Vel." unit="m/s" tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} type="number" width={30} />
+                  <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: "3 3" }} />
+                  <Scatter data={profile.points} fill={F.orange} line={{ stroke: F.orange, strokeWidth: 1 }} shape="circle" />
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          {vrecs.length > 0 && (
+            <div style={{ ...panel, marginBottom: 0, overflowY: "auto" }}>
+              <PanelHeader accent={F.yellow}>HISTORIAL VELOCIDAD</PanelHeader>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+                <tbody>{vrecs.slice().reverse().map((r, i) => (
+                  <tr key={i} style={{ borderBottom: `1px solid ${F.ghost}` }}>
+                    <td style={{ padding: "3px 6px", color: F.teal, fontFamily: F.fontMono }}>{r.fullDate}</td>
+                    <td style={{ padding: "3px 6px", color: F.silver, fontFamily: F.fontMono }}>{r.distance || "—"}</td>
+                    <td style={{ padding: "3px 6px", color: F.white, fontFamily: F.fontMono, fontWeight: 700 }}>{r.time?.toFixed(2)}s</td>
+                  </tr>
+                ))}</tbody>
               </table>
             </div>
-          </div>
-        )}
+          )}
+          {rrecs.length > 0 && (
+            <div style={{ ...panel, marginBottom: 0, overflowY: "auto" }}>
+              <PanelHeader accent={F.purple}>HISTORIAL MOVILIDAD</PanelHeader>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10 }}>
+                <tbody>{rrecs.slice().reverse().map((r, i) => (
+                  <tr key={i} style={{ borderBottom: `1px solid ${F.ghost}` }}>
+                    <td style={{ padding: "3px 6px", color: F.teal, fontFamily: F.fontMono }}>{r.fullDate}</td>
+                    <td style={{ padding: "3px 6px", color: F.silver, fontFamily: F.fontMono }}>{r.test}</td>
+                    <td style={{ padding: "3px 6px", color: F.white, fontFamily: F.fontMono, fontWeight: 700 }}>{r.asim?.toFixed(1)}%</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
 
-  // ── Compare ───────────────────────────────────────────────────────────────
+  // ── Compare (condensado) ────────────────────────────────────────────────────
   const Compare = () => {
     const activePlayers = players.filter(p => (pJR(p.id).length + pVR(p.id).length + pRR(p.id).length + pLR(p.id).length) > 0);
     const pidA = compareA && activePlayers.find(p => p.id === compareA) ? compareA : activePlayers[0]?.id;
     const pidB = compareB && activePlayers.find(p => p.id === compareB) ? compareB : activePlayers[1]?.id || activePlayers[0]?.id;
-    const nA = players.find(p => p.id === pidA)?.name.split(" ")[0] || "A";
-    const nB = players.find(p => p.id === pidB)?.name.split(" ")[0] || "B";
+    const pA = players.find(p => p.id === pidA); const pB = players.find(p => p.id === pidB);
+    const nA = pA?.name.split(" ")[0] || "A"; const nB = pB?.name.split(" ")[0] || "B";
 
-    // Comparación directa dato-contra-dato: cada métrica trae su grupo (roster) para calcular
-    // el percentil de A y B, sin ninguna referencia fija externa.
     const radarM = [
       { key:"cmj", label:"CMJ", vA:bestJump(pidA)?.altura, vB:bestJump(pidB)?.altura, unit:"cm", lowerIsBetter:false, group:jumpGroup },
       { key:"rsi", label:"RSI", vA:bestJump(pidA)?.rsi,    vB:bestJump(pidB)?.rsi,    unit:"", lowerIsBetter:false, group:rsiGroup },
       ...allDist.map(d => ({ key:d, label:d, vA:bestVel(pidA,d)?.time, vB:bestVel(pidB,d)?.time, unit:"s", lowerIsBetter:true, group:distGroups[d] })),
-      ...Object.keys(STRENGTH_REFS).map(k => ({ key:k, label:STRENGTH_REFS[k].label, vA:relStrength(pidA,k), vB:relStrength(pidB,k), unit:"x PC", lowerIsBetter:false, group:strengthGroups[k] })),
+      ...["squat","bench-press"].map(k => ({ key:k, label:REFERENCE_RANGES[k].label, vA:relStrength(pidA,k), vB:relStrength(pidB,k), unit:"x PC", lowerIsBetter:false, group:strengthGroups[k] })),
     ];
     const radarD = radarM.map(m => ({ metric: m.label, [nA]: percentileRank(m.group, pidA, m.lowerIsBetter) ?? 0, [nB]: percentileRank(m.group, pidB, m.lowerIsBetter) ?? 0 }));
-
-    const evoA = jumpEvo(pidA); const evoB = jumpEvo(pidB);
-    const allF = Array.from(new Set([...evoA.map(d => d.fecha), ...evoB.map(d => d.fecha)])).sort();
-    const merged = allF.map(f => ({ fecha: f, [nA]: evoA.find(d => d.fecha === f)?.CMJ ?? null, [nB]: evoB.find(d => d.fecha === f)?.CMJ ?? null }));
 
     const asymA = lastAsym(pidA); const asymB = lastAsym(pidB);
     const pctA = avgPercentile(pidA); const pctB = avgPercentile(pidB);
 
     return (
-      <div>
-        <BackBtn onClick={goBack} />
-        <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 110px)" }}>
+        <div style={{ display: "flex", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
           {[
-            { val: pidA, set: setCompareA, label: "ATLETA A", col: F.teal },
-            { val: pidB, set: setCompareB, label: "ATLETA B", col: F.red  },
-          ].map(({ val, set, label, col }) => (
-            <div key={label} style={{ flex: 1, minWidth: 160 }}>
-              <label style={{ ...lbl, color: col }}>{label}</label>
-              <select style={{ ...sel, width: "100%" }} value={val || ""}
-                onChange={e => set(e.target.value)}>
-                {activePlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
+            { val: pidA, set: setCompareA, label: "ATLETA A", col: F.teal, pl: pA },
+            { val: pidB, set: setCompareB, label: "ATLETA B", col: F.red, pl: pB },
+          ].map(({ val, set, label, col, pl }) => (
+            <div key={label} style={{ flex: 1, minWidth: 160, display: "flex", alignItems: "center", gap: 8 }}>
+              <Avatar player={pl} size={32} ring={col} />
+              <div style={{ flex: 1 }}>
+                <label style={{ ...lbl, color: col }}>{label}</label>
+                <select style={{ ...sel, width: "100%" }} value={val || ""} onChange={e => set(e.target.value)}>
+                  {activePlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
             </div>
           ))}
         </div>
 
-        {/* Head to head */}
-        <div style={{ ...panel, display: "flex", alignItems: "center", gap: 0, marginBottom: 14, padding: 0, overflow: "hidden" }}>
-          {[{ pid: pidA, pct: pctA, col: F.teal, name: nA }, { pid: pidB, pct: pctB, col: F.red, name: nB }].map(({ pid, pct, col, name }, i) => (
-            <div key={pid} style={{ flex: 1, padding: "16px 20px", borderRight: i === 0 ? `1px solid ${F.panelBorder}` : "none", textAlign: "center" }}>
-              <div style={{ fontFamily: F.fontMono, fontSize: 10, color: col, letterSpacing: 3, marginBottom: 10 }}>{name.toUpperCase()}</div>
-              <TimingScore score={pct} size={72} />
-              <div style={{ marginTop: 8 }}><PercentileChip pct={pct} /></div>
-            </div>
-          ))}
-          <div style={{ padding: "16px 24px", textAlign: "center" }}>
-            <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, letterSpacing: 2, marginBottom: 6 }}>DIFERENCIA</div>
-            <div style={{ fontFamily: F.fontMono, fontSize: 28, color: pctA == null || pctB == null || Math.abs(pctA - pctB) < 5 ? F.silver : pctA > pctB ? F.teal : F.red, fontWeight: 700 }}>
-              {pctA == null || pctB == null ? "—" : pctA === pctB ? "=" : `${Math.abs(pctA - pctB)} pts`}
+        <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "auto 1fr", gap: 8, overflowY: "auto" }}>
+          <div style={{ ...panel, gridColumn: "1 / -1", flexDirection: "row", alignItems: "center", padding: "10px 16px", marginBottom: 0 }}>
+            {[{ pct: pctA, col: F.teal, name: nA }, { pct: pctB, col: F.red, name: nB }].map(({ pct, col, name }) => (
+              <div key={name} style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, justifyContent: "center" }}>
+                <TimingScore score={pct} size={48} />
+                <div>
+                  <div style={{ fontFamily: F.fontMono, fontSize: 10, color: col, letterSpacing: 2 }}>{name.toUpperCase()}</div>
+                  <PercentileChip pct={pct} />
+                </div>
+              </div>
+            ))}
+            <div style={{ textAlign: "center", paddingLeft: 16, borderLeft: `1px solid ${F.panelBorder}` }}>
+              <div style={{ fontFamily: F.fontMono, fontSize: 8, color: F.dim, letterSpacing: 1 }}>DIF.</div>
+              <div style={{ fontFamily: F.fontMono, fontSize: 20, color: pctA == null || pctB == null || Math.abs(pctA - pctB) < 5 ? F.silver : pctA > pctB ? F.teal : F.red, fontWeight: 700 }}>
+                {pctA == null || pctB == null ? "—" : pctA === pctB ? "=" : `${Math.abs(pctA - pctB)}`}
+              </div>
             </div>
           </div>
-        </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <div style={panel}>
-            <PanelHeader>RADAR COMPARATIVO <span style={{ color: F.dim, fontSize: 9 }}>(percentil vs. plantel)</span></PanelHeader>
-            <ResponsiveContainer width="100%" height={260}>
+          <div style={{ ...panel, marginBottom: 0 }}>
+            <PanelHeader>RADAR <span style={{ color: F.dim, fontSize: 8 }}>(percentil vs. plantel)</span></PanelHeader>
+            <ResponsiveContainer width="100%" height="100%">
               <RadarChart data={radarD}>
                 <PolarGrid stroke={F.ghost} />
-                <PolarAngleAxis dataKey="metric" tick={{ fill: F.silver, fontSize: 10, fontFamily: F.fontMono }} />
-                <PolarRadiusAxis domain={[0, 100]} tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} />
+                <PolarAngleAxis dataKey="metric" tick={{ fill: F.silver, fontSize: 9, fontFamily: F.fontMono }} />
+                <PolarRadiusAxis domain={[0, 100]} tick={{ fill: F.dim, fontSize: 8, fontFamily: F.fontMono }} />
                 <Radar name={nA} dataKey={nA} stroke={F.teal} fill={F.teal} fillOpacity={0.15} strokeWidth={2} />
                 <Radar name={nB} dataKey={nB} stroke={F.red}  fill={F.red}  fillOpacity={0.15} strokeWidth={2} />
-                <Legend wrapperStyle={{ fontSize: 10, fontFamily: F.fontMono }} />
+                <Legend wrapperStyle={{ fontSize: 9, fontFamily: F.fontMono }} />
                 <Tooltip content={<CustomTooltip />} />
               </RadarChart>
             </ResponsiveContainer>
           </div>
 
-          <div style={panel}>
-            <PanelHeader>MÉTRICAS — COMPARACIÓN DIRECTA</PanelHeader>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ ...panel, marginBottom: 0, overflowY: "auto" }}>
+            <PanelHeader>COMPARACIÓN DIRECTA</PanelHeader>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {radarM.map(({ key, label, vA, vB, unit, lowerIsBetter }) => {
                 const winner = vA == null || vB == null ? null : (lowerIsBetter ? vA < vB : vA > vB) ? "A" : (vA === vB ? null : "B");
                 return (
-                  <div key={key} style={{ background: F.asphalt, borderRadius: 3, padding: "8px 12px", border: `1px solid ${F.ghost}` }}>
-                    <div style={{ fontFamily: F.fontMono, fontSize: 10, color: F.silver, letterSpacing: 1, marginBottom: 5 }}>{label}</div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {[{ name: nA, val: vA, col: F.teal, isWinner: winner === "A" }, { name: nB, val: vB, col: F.red, isWinner: winner === "B" }].map(({ name, val, col, isWinner }) => (
-                        <div key={name} style={{ flex: 1, textAlign: "center", background: F.panel, borderRadius: 2, padding: "5px 4px", borderTop: `2px solid ${isWinner ? F.green : col}` }}>
-                          <div style={{ fontSize: 9, color: col, marginBottom: 2, fontFamily: F.fontMono, letterSpacing: 1 }}>{name}{isWinner ? " ▲" : ""}</div>
-                          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: F.fontMono, color: val != null ? (isWinner ? F.green : F.white) : F.ghost }}>
-                            {val != null ? `${val > 10 ? val.toFixed(1) : val.toFixed(2)}${unit}` : "—"}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                  <div key={key} style={{ display: "flex", alignItems: "center", gap: 6, background: F.asphalt, borderRadius: 3, padding: "4px 8px" }}>
+                    <span style={{ fontFamily: F.fontMono, fontSize: 9, color: F.silver, width: 60 }}>{label}</span>
+                    <span style={{ flex: 1, textAlign: "center", fontFamily: F.fontMono, fontSize: 11, fontWeight: 700, color: winner === "A" ? F.green : F.white }}>{vA != null ? `${vA > 10 ? vA.toFixed(1) : vA.toFixed(2)}${unit}` : "—"}</span>
+                    <span style={{ fontSize: 9, color: F.dim }}>vs</span>
+                    <span style={{ flex: 1, textAlign: "center", fontFamily: F.fontMono, fontSize: 11, fontWeight: 700, color: winner === "B" ? F.green : F.white }}>{vB != null ? `${vB > 10 ? vB.toFixed(1) : vB.toFixed(2)}${unit}` : "—"}</span>
                   </div>
                 );
               })}
+              {(asymA || asymB) && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, background: F.asphalt, borderRadius: 3, padding: "4px 8px", marginTop: 4, borderTop: `1px solid ${F.purple}` }}>
+                  <span style={{ fontFamily: F.fontMono, fontSize: 9, color: F.purple, width: 60 }}>Asimetría</span>
+                  <span style={{ flex: 1, textAlign: "center", fontFamily: F.fontMono, fontSize: 11, color: F.white }}>{asymA ? `${asymA.asim?.toFixed(1)}%` : "—"}</span>
+                  <span style={{ fontSize: 9, color: F.dim }}>vs</span>
+                  <span style={{ flex: 1, textAlign: "center", fontFamily: F.fontMono, fontSize: 11, color: F.white }}>{asymB ? `${asymB.asim?.toFixed(1)}%` : "—"}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
-
-        {(asymA || asymB) && (
-          <div style={{ ...panel, marginTop: 12, borderTop: `2px solid ${F.purple}` }}>
-            <PanelHeader accent={F.purple}>MOVILIDAD — ÚLTIMA ASIMETRÍA</PanelHeader>
-            <div style={{ display: "flex", gap: 10 }}>
-              {[{ name: nA, r: asymA, col: F.teal }, { name: nB, r: asymB, col: F.red }].map(({ name, r, col }) => (
-                <div key={name} style={{ flex: 1, textAlign: "center", background: F.asphalt, borderRadius: 3, padding: "10px 8px", borderTop: `1px solid ${col}` }}>
-                  <div style={{ fontSize: 9, color: col, fontFamily: F.fontMono, letterSpacing: 1, marginBottom: 4 }}>{name}</div>
-                  {r ? (
-                    <>
-                      <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, marginBottom: 2 }}>{r.test}</div>
-                      <div style={{ fontSize: 18, fontWeight: 700, fontFamily: F.fontMono, color: F.white }}>{r.asim?.toFixed(1)}%</div>
-                    </>
-                  ) : <div style={{ fontFamily: F.fontMono, fontSize: 12, color: F.ghost }}>Sin datos</div>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {merged.some(d => d[nA] || d[nB]) && (
-          <div style={{ ...panel, marginTop: 12 }}>
-            <PanelHeader>EVOLUCIÓN CMJ COMPARADA</PanelHeader>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={merged}>
-                <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
-                <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} />
-                <YAxis tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} unit="cm" />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 10, fontFamily: F.fontMono }} />
-                <Line dataKey={nA} stroke={F.teal} strokeWidth={2} dot={{ r: 4 }} connectNulls />
-                <Line dataKey={nB} stroke={F.red}  strokeWidth={2} dot={{ r: 4 }} connectNulls />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
       </div>
     );
   };
 
-  // ── Informe descargable ──────────────────────────────────────────────────
+  // ── Informe (per-metric: devolución + plan en cada dato que esté bajo) ─────
   const ReportView = () => {
     const activePlayers = players.filter(p => (pJR(p.id).length + pVR(p.id).length + pRR(p.id).length + pLR(p.id).length) > 0);
     const pid = selPlayer && activePlayers.find(p => p.id === selPlayer) ? selPlayer : activePlayers[0]?.id;
@@ -1329,242 +1198,137 @@ export default function App() {
     const jevo = jumpEvo(pid); const vevo = velEvo(pid); const revo = romEvo(pid);
     const asym = lastAsym(pid);
 
-    // Métricas clasificadas contra tus referencias reales de fútbol (REFERENCE_BANDS).
     const metrics = [];
     if (cmjRec?.altura != null) metrics.push({ label: "CMJ", value: cmjRec.altura, unit: "cm", ref: REFERENCE_BANDS.cmj, category: "salto" });
     if (djRec?.altura != null) metrics.push({ label: "DJ", value: djRec.altura, unit: "cm", ref: REFERENCE_BANDS.dj, category: "salto" });
     if (rsiRec?.rsi != null) metrics.push({ label: "RSI (DJ)", value: rsiRec.rsi, unit: "", ref: REFERENCE_BANDS.rsi, category: "rsi" });
-    allDist.forEach(d => {
-      const bv = bestVel(pid, d); if (!bv) return;
-      metrics.push({ label: `Sprint ${d}`, value: bv.time, unit: "s", ref: REFERENCE_BANDS[d] || null, category: "velocidad" });
-    });
-    Object.keys(STRENGTH_REFS).forEach(k => {
+    allDist.forEach(d => { const bv = bestVel(pid, d); if (bv) metrics.push({ label: `Sprint ${d}`, value: bv.time, unit: "s", ref: REFERENCE_BANDS[d] || null, category: "velocidad" }); });
+    ["squat", "bench-press"].forEach(k => {
       const rs = relStrength(pid, k); if (rs == null) return;
-      metrics.push({ label: STRENGTH_REFS[k].label, value: rs, unit: "x PC", ref: REFERENCE_BANDS[k], category: k === "squat" ? "squat" : "bench" });
+      metrics.push({ label: REFERENCE_RANGES[k].label, value: rs, unit: "x PC", ref: REFERENCE_BANDS[k], category: k === "squat" ? "squat" : "bench" });
     });
-    // Movilidad: ángulo absoluto (el lado más limitado) contra tu referencia de ROM.
     const romTestsForPlayer = Array.from(new Set(pRR(pid).map(r => r.test)));
     romTestsForPlayer.forEach(testName => {
       const refKey = matchRomRef(testName); if (!refKey) return;
       const recs = pRR(pid).filter(r => r.test === testName); const latest = recs[recs.length - 1]; if (!latest) return;
-      const sides = [latest.angI, latest.angD].filter(v => v != null);
-      if (!sides.length) return;
-      const worse = Math.min(...sides);
-      metrics.push({ label: `${testName} (lado más limitado)`, value: worse, unit: "°", ref: REFERENCE_BANDS[refKey], category: "movilidad" });
+      const sides = [latest.angI, latest.angD].filter(v => v != null); if (!sides.length) return;
+      metrics.push({ label: `${testName}`, value: Math.min(...sides), unit: "°", ref: REFERENCE_BANDS[refKey], category: "movilidad" });
     });
 
     const classified = metrics.map(m => ({ ...m, score: m.ref ? bandScore(m.ref, m.value) : null }));
-    const fortalezas = classified.filter(m => m.score >= 70);
-    const promedio    = classified.filter(m => m.score >= 50 && m.score < 70);
-    const debilidades = classified.filter(m => m.score != null && m.score < 50);
-    // squat/bench-press ya tienen su propio apartado dedicado (FUERZA — VBT/RM) más abajo,
-    // así que se excluyen acá para no repetir el mismo plan dos veces.
-    const weakCategories = Array.from(new Set(debilidades.map(m => m.category))).filter(c => c !== "squat" && c !== "bench");
-
-    // Evaluación dedicada de fuerza (VBT/RM) — Squat y Press plano.
-    const strengthEval = Object.keys(STRENGTH_REFS).map(k => {
-      const rec = bestRM(pid, k);
-      if (!rec) return { key: k, evaluated: false, label: STRENGTH_REFS[k].label };
-      const rs = relStrength(pid, k);
-      const score = rs != null ? bandScore(REFERENCE_BANDS[k], rs) : null;
-      return { key: k, evaluated: true, label: STRENGTH_REFS[k].label, rm: rec.rm, bw: rec.bodyweight, rs, ref: REFERENCE_BANDS[k], score, bankKey: k === "squat" ? "squat" : "bench" };
-    });
 
     return (
-      <div className="report-page" style={{ background: F.carbon, maxWidth: 860, margin: "0 auto" }}>
+      <div className="report-page" style={{ background: F.carbon, maxWidth: 1000, margin: "0 auto" }}>
         <style>{`
           @media print {
             .no-print { display: none !important; }
-            .report-page { background: #fff !important; color: #111 !important; }
-            .report-page * { color: #111 !important; background: transparent !important; border-color: #ccc !important; box-shadow: none !important; }
-            .report-page .report-panel { border: 1px solid #ccc !important; page-break-inside: avoid; }
+            .report-page, .report-page * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+            @page { size: A4 landscape; margin: 10mm; }
           }
         `}</style>
 
-        <div className="no-print" style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+        <div className="no-print" style={{ display: "flex", gap: 10, marginBottom: 12 }}>
           <BackBtn onClick={goBack} />
           <button onClick={() => window.print()} style={{ padding: "6px 18px", background: F.yellow, color: F.carbon, border: "none", borderRadius: 3, fontFamily: F.fontMono, fontSize: 10, fontWeight: 700, letterSpacing: 2, cursor: "pointer" }}>
             🖨 IMPRIMIR / GUARDAR PDF
           </button>
+          <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, alignSelf: "center" }}>Tip: en el diálogo de impresión, activá "Gráficos de fondo" para que salga a color</div>
         </div>
 
-        <div className="report-panel" style={{ ...panel, borderTop: `3px solid ${F.red}` }}>
+        <div className="report-panel" style={{ ...panel, borderTop: `3px solid ${F.red}`, flexDirection: "row", alignItems: "center", gap: 14 }}>
+          <Avatar player={p} size={56} />
           <div>
-            <div style={{ fontFamily: F.fontMono, fontSize: 20, color: F.white, letterSpacing: 2, fontWeight: 700 }}>{p.name}</div>
-            <div style={{ fontFamily: F.fontMono, fontSize: 11, color: F.dim, marginTop: 4 }}>{p.team || "—"} · Informe generado {new Date().toLocaleDateString("es-AR")}</div>
+            <div style={{ fontFamily: F.fontMono, fontSize: 18, color: F.white, letterSpacing: 2, fontWeight: 700 }}>{p.name}</div>
+            <div style={{ fontFamily: F.fontMono, fontSize: 10, color: F.dim, marginTop: 2 }}>{p.team || "—"} · Informe generado {new Date().toLocaleDateString("es-AR")}</div>
           </div>
         </div>
 
-        <div className="report-panel" style={panel}>
-          <PanelHeader>MÉTRICAS ACTUALES <span style={{ color: F.dim, fontSize: 9 }}>(vs. referencia de fútbol)</span></PanelHeader>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead><tr style={{ borderBottom: `1px solid ${F.panelBorder}` }}>
-              {["MÉTRICA", "VALOR", "RANGO ÉLITE", "NIVEL"].map(h => (
-                <th key={h} style={{ padding: "6px 10px", color: F.dim, textAlign: "left", fontFamily: F.fontMono, fontSize: 9, letterSpacing: 2 }}>{h}</th>
-              ))}
-            </tr></thead>
-            <tbody>{classified.map((m, i) => (
-              <tr key={i} style={{ borderBottom: `1px solid ${F.ghost}` }}>
-                <td style={{ padding: "7px 10px", color: F.silver, fontFamily: F.fontMono }}>{m.label}</td>
-                <td style={{ padding: "7px 10px", color: F.white, fontFamily: F.fontMono, fontWeight: 700 }}>{m.value?.toFixed(2)}{m.unit}</td>
-                <td style={{ padding: "7px 10px", color: F.dim, fontFamily: F.fontMono, fontSize: 11 }}>{m.ref ? `${m.ref.min}–${m.ref.max}${m.ref.unit}` : "—"}</td>
-                <td style={{ padding: "7px 10px" }}><ReportBadge score={m.score} /></td>
-              </tr>
-            ))}</tbody>
-          </table>
-          {classified.length === 0 && <div style={{ fontFamily: F.fontMono, fontSize: 11, color: F.dim, marginTop: 8 }}>Sin datos suficientes todavía.</div>}
-          {asym && (
-            <div style={{ marginTop: 10, fontFamily: F.fontMono, fontSize: 10, color: F.dim }}>
-              Asimetría {asym.test}: <span style={{ color: F.white }}>{asym.asim?.toFixed(1)}%</span> (informativo — sin umbral de referencia cargado)
-            </div>
-          )}
-        </div>
-
-        <div className="report-panel" style={{ ...panel, borderTop: `2px solid ${F.orange}` }}>
-          <PanelHeader accent={F.orange}>FUERZA — VBT / RM (SQUAT Y PRESS PLANO)</PanelHeader>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {strengthEval.map(s => (
-              <div key={s.key} style={{ background: F.asphalt, borderRadius: 3, padding: "10px 14px", border: `1px solid ${F.ghost}` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <span style={{ fontFamily: F.fontMono, fontSize: 11, color: F.white, letterSpacing: 1 }}>{s.label.toUpperCase()}</span>
-                  {s.evaluated ? <ReportBadge score={s.score} /> : <span style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim }}>NO EVALUADO</span>}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 8, marginBottom: 10 }}>
+          {classified.map((m, i) => {
+            const fb = feedbackFor(m.category, m.score);
+            return (
+              <div key={i} className="report-panel" style={{ ...panel, marginBottom: 0, borderTop: `2px solid ${m.score != null ? bandLevel(m.score).color : F.ghost}` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <span style={{ fontFamily: F.fontMono, fontSize: 10, color: F.silver, letterSpacing: 1 }}>{m.label}</span>
+                  <ReportBadge score={m.score} />
                 </div>
-                {s.evaluated ? (
-                  <>
-                    <div style={{ fontFamily: F.fontMono, fontSize: 11, color: F.silver, marginBottom: 6 }}>
-                      1RM: <span style={{ color: F.white, fontWeight: 700 }}>{s.rm?.toFixed(1)}kg</span> · PC: <span style={{ color: F.white }}>{s.bw?.toFixed(1)}kg</span> · Relativo: <span style={{ color: F.white, fontWeight: 700 }}>{s.rs?.toFixed(2)}x PC</span> · Rango élite: {s.ref.min}–{s.ref.max}x PC
+                <div style={{ fontFamily: F.fontMono, fontSize: 18, color: F.white, fontWeight: 700, marginBottom: 2 }}>{m.value?.toFixed(2)}{m.unit}</div>
+                <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, marginBottom: fb ? 8 : 0 }}>{m.ref ? `Élite: ${m.ref.min}–${m.ref.max}${m.ref.unit}` : "Sin referencia"}</div>
+                {fb && (
+                  <div style={{ borderTop: `1px solid ${F.ghost}`, paddingTop: 6 }}>
+                    <div style={{ fontFamily: F.fontF1, fontSize: 11, color: F.orange, marginBottom: 4 }}>→ A mejorar. Plan sugerido:</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      {fb.items.slice(0, 3).map((it, j) => (
+                        <div key={j} style={{ display: "flex", justifyContent: "space-between", fontFamily: F.fontF1, fontSize: 10 }}>
+                          <span style={{ color: F.white }}>{it.name}</span>
+                          <span style={{ color: F.teal, fontFamily: F.fontMono, marginLeft: 6, whiteSpace: "nowrap" }}>{it.sets}</span>
+                        </div>
+                      ))}
                     </div>
-                    {s.score != null && s.score < 70 ? (
-                      <>
-                        <div style={{ fontFamily: F.fontF1, fontSize: 12, color: F.orange, marginBottom: 8 }}>
-                          → Necesita mejorar su nivel de fuerza en {s.label.toLowerCase()}. Se recomienda un bloque de trabajo específico:
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                          {EXERCISE_BANK[s.bankKey].items.map((it, i) => (
-                            <div key={i} style={{ display: "flex", justifyContent: "space-between", background: F.panel, borderRadius: 3, padding: "6px 10px" }}>
-                              <span style={{ fontFamily: F.fontF1, fontSize: 12, color: F.white }}>{it.name}</span>
-                              <span style={{ fontFamily: F.fontMono, fontSize: 11, color: F.teal, whiteSpace: "nowrap", marginLeft: 10 }}>{it.sets}</span>
-                            </div>
-                          ))}
-                        </div>
-                        <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, marginTop: 6 }}>Fuente: {EXERCISE_BANK[s.bankKey].fuente}</div>
-                      </>
-                    ) : (
-                      <div style={{ fontFamily: F.fontF1, fontSize: 12, color: F.green }}>→ Nivel de fuerza adecuado para este apartado, no requiere plan correctivo prioritario.</div>
-                    )}
-                  </>
-                ) : (
-                  <div style={{ fontFamily: F.fontF1, fontSize: 12, color: F.dim }}>Todavía no se cargó un test de VBT/RM para {s.label.toLowerCase()} de este atleta.</div>
+                    <div style={{ fontFamily: F.fontMono, fontSize: 8, color: F.dim, marginTop: 4 }}>Fuente: {fb.fuente}</div>
+                  </div>
                 )}
               </div>
-            ))}
-          </div>
-        </div>
-
-        {jevo.length > 0 && (
-          <div className="report-panel" style={panel}>
-            <PanelHeader>EVOLUCIÓN — ALTURA DE SALTO (cm)</PanelHeader>
-            <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={jevo}>
-                <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
-                <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} />
-                <YAxis tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} unit="cm" />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 10, fontFamily: F.fontMono }} />
-                <Line dataKey="CMJ" stroke={F.teal} strokeWidth={2} dot={{ r: 3 }} connectNulls />
-                <Line dataKey="DJ"  stroke={F.red}  strokeWidth={2} dot={{ r: 3 }} connectNulls />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {vevo.length > 0 && allDist.length > 0 && (
-          <div className="report-panel" style={panel}>
-            <PanelHeader accent={F.yellow}>EVOLUCIÓN — VELOCIDAD (s)</PanelHeader>
-            <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={vevo}>
-                <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
-                <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} />
-                <YAxis tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} unit="s" />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 10, fontFamily: F.fontMono }} />
-                {allDist.map((d, i) => <Line key={d} dataKey={d} stroke={TEAM_COLORS[i]} strokeWidth={2} dot={{ r: 3 }} connectNulls />)}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {revo.length > 0 && (
-          <div className="report-panel" style={panel}>
-            <PanelHeader accent={F.purple}>EVOLUCIÓN — MOVILIDAD (ASIMETRÍA %)</PanelHeader>
-            <ResponsiveContainer width="100%" height={160}>
-              <LineChart data={revo}>
-                <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
-                <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} />
-                <YAxis tick={{ fill: F.dim, fontSize: 10, fontFamily: F.fontMono }} unit="%" />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend wrapperStyle={{ fontSize: 10, fontFamily: F.fontMono }} />
-                {romTests.map((t, i) => <Line key={t} dataKey={t} stroke={[F.purple, F.orange, F.teal, F.yellow][i % 4]} strokeWidth={2} dot={{ r: 3 }} connectNulls />)}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        <div className="report-panel" style={{ ...panel, borderTop: `2px solid ${F.green}` }}>
-          <PanelHeader accent={F.green}>CONCLUSIÓN</PanelHeader>
-          {fortalezas.length > 0 && (
-            <div style={{ marginBottom: 10 }}>
-              <span style={{ fontFamily: F.fontMono, fontSize: 10, color: F.green, letterSpacing: 1 }}>FORTALEZAS: </span>
-              <span style={{ fontFamily: F.fontF1, fontSize: 13, color: F.silver }}>
-                {fortalezas.map(m => `${m.label} (${m.value?.toFixed(1)}${m.unit})`).join(", ")}. Dentro o por encima del rango élite de referencia.
-              </span>
+            );
+          })}
+          {classified.length === 0 && <div style={{ fontFamily: F.fontMono, fontSize: 11, color: F.dim }}>Sin datos suficientes todavía.</div>}
+          {asym && (
+            <div className="report-panel" style={{ ...panel, marginBottom: 0 }}>
+              <div style={{ fontFamily: F.fontMono, fontSize: 10, color: F.purple, marginBottom: 4 }}>ASIMETRÍA {asym.test}</div>
+              <div style={{ fontFamily: F.fontMono, fontSize: 18, color: F.white, fontWeight: 700 }}>{asym.asim?.toFixed(1)}%</div>
+              <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim }}>Informativo — sin umbral de referencia cargado</div>
             </div>
-          )}
-          {promedio.length > 0 && (
-            <div style={{ marginBottom: 10 }}>
-              <span style={{ fontFamily: F.fontMono, fontSize: 10, color: F.teal, letterSpacing: 1 }}>A CONSOLIDAR: </span>
-              <span style={{ fontFamily: F.fontF1, fontSize: 13, color: F.silver }}>{promedio.map(m => m.label).join(", ")}.</span>
-            </div>
-          )}
-          {debilidades.length > 0 ? (
-            <div>
-              <span style={{ fontFamily: F.fontMono, fontSize: 10, color: F.red, letterSpacing: 1 }}>A MEJORAR: </span>
-              <span style={{ fontFamily: F.fontF1, fontSize: 13, color: F.silver }}>
-                {debilidades.map(m => `${m.label} (${m.value?.toFixed(1)}${m.unit} vs. ${m.ref.min}–${m.ref.max}${m.ref.unit} élite)`).join(", ")}. Se recomienda trabajo complementario dirigido en las próximas semanas.
-              </span>
-            </div>
-          ) : classified.length > 0 ? (
-            <div style={{ fontFamily: F.fontF1, fontSize: 13, color: F.silver }}>No se detectan puntos débiles marcados frente a la referencia — perfil parejo o por encima en todas las métricas evaluadas.</div>
-          ) : (
-            <div style={{ fontFamily: F.fontF1, fontSize: 13, color: F.dim }}>Sin datos suficientes para evaluar todavía.</div>
           )}
         </div>
 
-        {weakCategories.length > 0 && (
-          <div className="report-panel" style={{ ...panel, borderTop: `2px solid ${F.orange}` }}>
-            <PanelHeader accent={F.orange}>PLAN DE EJERCICIOS COMPLEMENTARIO</PanelHeader>
-            {weakCategories.map(cat => {
-              const bank = EXERCISE_BANK[cat]; if (!bank) return null;
-              return (
-                <div key={cat} style={{ marginBottom: 16 }}>
-                  <div style={{ fontFamily: F.fontMono, fontSize: 11, color: F.orange, letterSpacing: 1, marginBottom: 2 }}>{bank.label.toUpperCase()}</div>
-                  <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, marginBottom: 8 }}>Fuente: {bank.fuente}</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    {bank.items.map((it, i) => (
-                      <div key={i} style={{ display: "flex", justifyContent: "space-between", background: F.asphalt, borderRadius: 3, padding: "6px 10px" }}>
-                        <span style={{ fontFamily: F.fontF1, fontSize: 12, color: F.white }}>{it.name}{it.note ? <span style={{ color: F.dim, fontSize: 11 }}> — {it.note}</span> : null}</span>
-                        <span style={{ fontFamily: F.fontMono, fontSize: 11, color: F.teal, whiteSpace: "nowrap", marginLeft: 10 }}>{it.sets}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-            <div style={{ fontFamily: F.fontMono, fontSize: 9, color: F.dim, marginTop: 4 }}>
-              Plan sugerido a partir de tus propios protocolos y tu referencia de campo. Ajustar cargas, series y progresión según criterio profesional.
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 8 }}>
+          {jevo.length > 0 && (
+            <div className="report-panel" style={{ ...panel, height: 170 }}>
+              <PanelHeader>EVOLUCIÓN — SALTO (cm)</PanelHeader>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={jevo}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
+                  <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} />
+                  <YAxis tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} unit="cm" width={30} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: 9, fontFamily: F.fontMono }} />
+                  <Line dataKey="CMJ" stroke={F.teal} strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                  <Line dataKey="DJ"  stroke={F.red}  strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                </LineChart>
+              </ResponsiveContainer>
             </div>
-          </div>
-        )}
+          )}
+          {vevo.length > 0 && allDist.length > 0 && (
+            <div className="report-panel" style={{ ...panel, height: 170 }}>
+              <PanelHeader accent={F.yellow}>EVOLUCIÓN — VELOCIDAD (s)</PanelHeader>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={vevo}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
+                  <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} />
+                  <YAxis tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} unit="s" width={30} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: 9, fontFamily: F.fontMono }} />
+                  {allDist.map((d, i) => <Line key={d} dataKey={d} stroke={TEAM_COLORS[i]} strokeWidth={2} dot={{ r: 3 }} connectNulls />)}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          {revo.length > 0 && (
+            <div className="report-panel" style={{ ...panel, height: 170 }}>
+              <PanelHeader accent={F.purple}>EVOLUCIÓN — MOVILIDAD (%)</PanelHeader>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={revo}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={F.ghost} />
+                  <XAxis dataKey="fecha" tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} />
+                  <YAxis tick={{ fill: F.dim, fontSize: 9, fontFamily: F.fontMono }} unit="%" width={30} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: 9, fontFamily: F.fontMono }} />
+                  {romTests.map((t, i) => <Line key={t} dataKey={t} stroke={[F.purple, F.orange, F.teal, F.yellow][i % 4]} strokeWidth={2} dot={{ r: 3 }} connectNulls />)}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -1584,7 +1348,6 @@ export default function App() {
             <div style={{ fontFamily: F.fontMono, fontSize: 8, color: F.dim, letterSpacing: 3 }}>PERFORMANCE SYSTEM</div>
           </div>
         </div>
-
         <nav style={{ marginLeft: 32, display: "flex", gap: 2 }}>
           {[
             { key:"import",    label:"IMPORTAR" },
@@ -1595,14 +1358,12 @@ export default function App() {
           ].map(({ key, label, d }) => (
             <button key={key} onClick={() => !d && goTo(key)} style={{
               padding: "0 14px", height: 52, border: "none",
-              borderBottom: tab === key ? `2px solid ${key === "delete" ? F.red : F.red}` : "2px solid transparent",
+              borderBottom: tab === key ? `2px solid ${F.red}` : "2px solid transparent",
               cursor: d ? "default" : "pointer", fontFamily: F.fontMono, fontSize: 10, letterSpacing: 2,
               background: "transparent", color: tab === key ? F.white : d ? F.ghost : F.dim,
-              transition: "all .15s",
             }}>{label}</button>
           ))}
         </nav>
-
         {hasData && <div style={{ marginLeft: "auto", fontFamily: F.fontMono, fontSize: 9, color: F.dim, letterSpacing: 2 }}>
           {players.length} ATL · {jumpRecs.length + velRecs.length + romRecs.length + liftRecs.length + customRecs.length} REG
         </div>}
@@ -1610,7 +1371,7 @@ export default function App() {
 
       <div className="no-print"><TelemetryBar /></div>
 
-      <div style={{ padding: "20px 24px", maxWidth: 1160, margin: "0 auto" }}>
+      <div style={{ padding: "14px 20px", maxWidth: 1280, margin: "0 auto" }}>
         {tab === "import"    && <ImportView />}
         {tab === "dashboard" && hasData && <Dashboard />}
         {tab === "evolution" && hasData && <Evolution />}
